@@ -1,0 +1,18 @@
+# Scratch / planning notes (per-machine).
+.docs/
+
+# Internal agent/session guidance — kept local, not published.
+CLAUDE.md
+
+# Composer (the plugin ships source; runtime deps come from the platform + base plugin).
+/vendor/
+composer.lock
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Local package output
+.build/

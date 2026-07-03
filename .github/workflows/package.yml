@@ -1,0 +1,54 @@
+name: Package
+
+# Validate the plugin against Shopware store-compliance + structure checks and build the
+# installable FdPrismPayment.zip. The zip is uploaded as a workflow artifact on every run; pushing
+# a version tag (v*) also attaches it to a GitHub Release.
+#
+# Runs inside the official shopware-cli image (has shopware-cli + git + node). The zip is built in
+# git mode (default), so only tracked files are packaged — .docs/ and other gitignored scratch are
+# excluded automatically.
+
+on:
+  push:
+    branches: [develop, main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write  # needed to attach the zip to a Release on tag pushes
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: ghcr.io/shopware/shopware-cli:latest-php-8.3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags + full history so shopware-cli can resolve the version
+
+      # The checkout is owned by a different uid inside the container; mark it safe for git.
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Validate extension
+        run: shopware-cli extension validate .
+
+      # Absolute output dir: git mode checks the source out into a temp working dir, so a
+      # relative --output-directory would land there instead of the workspace.
+      - name: Build zip
+        run: shopware-cli extension zip . --release --output-directory "$GITHUB_WORKSPACE/.build"
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FdPrismPayment-zip
+          path: .build/*.zip
+          if-no-files-found: error
+          include-hidden-files: true  # the zip lives under .build/ (dot-prefixed); v4 skips hidden paths by default
+
+      - name: Attach zip to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .build/*.zip

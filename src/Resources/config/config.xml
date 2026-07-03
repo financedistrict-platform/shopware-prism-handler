@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/System/SystemConfig/Schema/config.xsd">
+    <card>
+        <title>Prism payment</title>
+        <title lang="de-DE">Prism-Zahlung</title>
+
+        <input-field type="password">
+            <name>prismApiKey</name>
+            <label>Prism API key</label>
+            <label lang="de-DE">Prism API Key</label>
+            <helpText>Per sales channel. Create it in the Prism Console for this store's merchant account. Payments settle via the production Prism gateway at https://prism-gw.fd.xyz.</helpText>
+            <helpText lang="de-DE">Pro Verkaufskanal. Im Prism-Console für das Händlerkonto dieses Shops erstellen. Zahlungen werden über das Produktions-Prism-Gateway unter https://prism-gw.fd.xyz abgewickelt.</helpText>
+        </input-field>
+    </card>
+</config>

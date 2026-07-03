@@ -1,0 +1,29 @@
+name: Test
+
+# Runs the pure Core unit suite (functional core: settlement state machine, accepts matcher,
+# response parser, value objects). These touch no Shopware kernel / DBAL / HTTP, so they run on
+# PHP + autoload alone — no `composer install` (the manifest's `shopware/agentic-commerce` is a
+# sibling plugin, not a Packagist package, so the dependency graph is intentionally unresolvable
+# here). The Infrastructure SQL guards are exercised by the e2e regression, not unit tests.
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP + PHPUnit
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: phpunit:11
+          coverage: none
+
+      - name: Run Core suite
+        run: phpunit -c phpunit.xml

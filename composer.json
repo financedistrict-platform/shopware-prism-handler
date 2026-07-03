@@ -1,0 +1,54 @@
+{
+  "name": "fd/prism-payment",
+  "description": "UCP Prism/x402 payment handler for Shopware (Agentic Commerce)",
+  "type": "shopware-platform-plugin",
+  "license": "MIT",
+  "version": "0.1.7",
+  "autoload": {
+    "psr-4": {
+      "Fd\\PrismPayment\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Fd\\PrismPayment\\Tests\\": "tests/"
+    }
+  },
+  "require": {
+    "php": "^8.2",
+    "shopware/core": ">=6.7.10.0 <7.0.0.0",
+    "shopware/agentic-commerce": ">=1.0.0 <2.0.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.5"
+  },
+  "scripts": {
+    "test": "phpunit"
+  },
+  "extra": {
+    "shopware-plugin-class": "Fd\\PrismPayment\\FdPrismPayment",
+    "label": {
+      "en-GB": "FD Prism Payment",
+      "de-DE": "FD Prism Payment"
+    },
+    "description": {
+      "en-GB": "Registers a Prism/x402 Universal Commerce Protocol payment handler so AI shopping agents can pay with an x402 wallet and have the order settled on-chain through Prism.",
+      "de-DE": "Registriert einen Prism/x402-Zahlungshandler fuer das Universal Commerce Protocol, damit KI-Agenten per x402-Wallet zahlen und Bestellungen on-chain ueber Prism begleichen."
+    },
+    "manufacturerLink": {
+      "en-GB": "https://1stdigital.com",
+      "de-DE": "https://1stdigital.com"
+    },
+    "supportLink": {
+      "en-GB": "https://github.com/financedistrict-platform/shopware-prism-handler/issues",
+      "de-DE": "https://github.com/financedistrict-platform/shopware-prism-handler/issues"
+    }
+  },
+  "authors": [
+    {
+      "name": "Finance District",
+      "homepage": "https://1stdigital.com",
+      "role": "Developer"
+    }
+  ]
+}
