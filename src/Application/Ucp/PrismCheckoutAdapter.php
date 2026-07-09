@@ -8,7 +8,6 @@ use Doctrine\DBAL\Connection;
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Core\BlockExplorer;
-use Fd\PrismPayment\Core\Exception\PrismApiException;
 use Fd\PrismPayment\Core\Payment\AcceptsMatcher;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
@@ -204,9 +203,13 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
         if (!$result->success) {
             $this->store->markFailed($sessionId);
 
-            throw new PrismApiException(sprintf(
-                'Prism settlement failed for checkout %s: %s',
-                $sessionId,
+            // Relay Prism's own rejection verdict to the agent as a clean 422 (ValidationException)
+            // instead of an opaque 500. We do not interpret the credential — Prism owns all
+            // x402/token/chain validation (expiry, funds, signature, nonce) — we surface its
+            // machine-readable errorReason verbatim so the agent can act (e.g. re-sign an expired
+            // authorization, or choose another asset on insufficient funds).
+            throw new ValidationException(sprintf(
+                'Prism declined the payment settlement: %s',
                 $result->errorReason ?? 'unknown error',
             ));
         }
@@ -252,7 +255,22 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
         $transactionId = (string) $row['id'];
         $shopwareContext = Context::createDefaultContext();
 
-        if (OrderTransactionStates::STATE_PAID !== $row['state']) {
+        // Drive the transaction to paid ONLY from a state that is still awaiting payment — the base's
+        // freshly-placed transaction is `open`. Never re-drive it otherwise: on an idempotent
+        // re-complete a merchant may have cancelled/refunded the payment in the admin, and forcing it
+        // back to paid would either silently override that (`cancelled -> paid` is a valid transition)
+        // or throw (`refunded` has no path to paid → a 500). We settle on-chain exactly once; the
+        // transaction's later lifecycle belongs to the merchant. `open` here also covers crash
+        // recovery — a prior complete that settled + placed the order but died before marking paid is
+        // finished by a retry.
+        $awaitingPayment = [
+            OrderTransactionStates::STATE_OPEN,
+            OrderTransactionStates::STATE_IN_PROGRESS,
+            OrderTransactionStates::STATE_AUTHORIZED,
+            OrderTransactionStates::STATE_UNCONFIRMED,
+            OrderTransactionStates::STATE_REMINDED,
+        ];
+        if (\in_array($row['state'], $awaitingPayment, true)) {
             $this->transactionStateHandler->paid($transactionId, $shopwareContext);
         }
 

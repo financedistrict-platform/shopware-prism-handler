@@ -1,3 +1,21 @@
+# 0.1.8
+Checkout-complete hardening — surfaces Prism's decline verdict to the agent, and stops an idempotent
+re-complete from fighting a merchant's later payment cancellation. Code-only: no API, config, or DB
+change.
+
+- **Prism declines now return a clean 422.** When Prism rejects a settlement (expired authorization,
+  insufficient funds, bad signature, …), `complete` relays Prism's machine-readable `errorReason` as a
+  `ValidationException` (HTTP **422**) instead of an opaque **500**, so the agent can act on the verdict
+  (re-sign an expired authorization, choose another asset). Still pure relay — Prism owns all
+  x402/token/chain validation; we do not interpret the credential.
+- **Paid transition is guarded to awaiting-payment states.** On an idempotent re-complete the order's
+  transaction is driven to `paid` **only** from a still-awaiting state (`open`, `in_progress`,
+  `authorized`, `unconfirmed`, `reminded`). It is never re-driven from `paid` (idempotent), `cancelled`,
+  or `refunded`, so a re-complete can no longer silently overturn a merchant's cancellation
+  (`cancelled → paid` is a valid transition) or throw on a refunded one (`refunded` has no path to
+  `paid`, previously a 500). We settle on-chain exactly once; the transaction's later lifecycle belongs
+  to the merchant. The `open` case also covers crash recovery.
+
 # 0.1.7
 State-integrity hardening — closes several settlement state-machine gaps found while triaging a
 QA-reported cancel bug. All are the same family: our settlement record desyncing from the base session.
