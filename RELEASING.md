@@ -13,13 +13,17 @@ How to cut a new version, and how Shopware applies it as an update.
 4. If the change touches a **definition** the plugin upserts (the payment method, the order
    custom-field set, `config.xml`-backed config), make sure `FdPrismPayment::update()` re-runs the
    relevant idempotent upsert — see the gotcha below.
-5. Commit, then tag and push:
+5. **Land it on `develop`, then promote to `main`.** Merge the change into `develop` (feature PR),
+   then open a **`develop → main` PR**. `main` is protected, so this is the only way it moves — merge
+   once CI (`core-tests` + `package`) is green.
+6. **Tag the release on `main`:**
    ```bash
+   git checkout main && git pull
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
    The **Package** workflow (`.github/workflows/package.yml`) validates the extension, builds
    `FdPrismPayment-vX.Y.Z.zip`, and attaches it to a GitHub Release for that tag.
-6. **Apply the update:** Admin → Extensions → Upload extension → the new zip → **Update** → clear cache.
+7. **Apply the update:** Admin → Extensions → Upload extension → the new zip → **Update** → clear cache.
 
 ## How Shopware applies an update (and the gotchas)
 **On a version upgrade Shopware calls `update(UpdateContext)` — NOT `install()` or `activate()`.** So:
