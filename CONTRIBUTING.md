@@ -26,6 +26,15 @@ info:
 - What you ran, what you expected, what happened (logs, response bodies, `/.well-known/ucp` output).
 - Whether it reproduces consistently.
 
+## Branching
+
+- **`develop` is the default and integration branch — base all work on it.**
+- Branch a `feature/<short-name>` off `develop`, then open a PR **into `develop`**. (External
+  contributors: fork, branch, PR into `develop`.)
+- **`main` is release-only.** It's protected — no direct pushes — and advances only through a
+  `develop → main` PR once CI (`core-tests` + `package`) is green. Releases are tagged on `main`
+  (see [RELEASING.md](RELEASING.md)).
+
 ## Pull requests
 
 Small and focused lands fastest.
