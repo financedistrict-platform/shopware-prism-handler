@@ -1,0 +1,11 @@
+{
+  "main.js": {
+    "file": "assets/fd-prism-payment-BdxjZqUZ.js",
+    "name": "fd-prism-payment",
+    "src": "main.js",
+    "isEntry": true,
+    "css": [
+      "assets/fd-prism-payment-Bz84IcZc.css"
+    ]
+  }
+}

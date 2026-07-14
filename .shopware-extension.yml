@@ -3,11 +3,11 @@ compatibility_date: '2026-02-11'
 
 # shopware-cli build config for `shopware-cli extension zip`.
 #
-# This plugin has NO third-party composer dependencies (it only requires
-# shopware/core + the licensed shopware/agentic-commerce, both provided by the
-# platform at runtime) and NO admin/storefront JS. So skip composer install and
-# the asset build when packaging — otherwise shopware-cli would try to resolve
-# shopware/agentic-commerce, which is not on public Packagist, and fail.
+# composer: disabled — no third-party composer deps (shopware/core + the licensed
+# shopware/agentic-commerce are provided at runtime), and agentic-commerce is not on
+# public Packagist, so a composer install would fail.
+# assets: disabled — the admin bundle is committed prebuilt under
+# src/Resources/public/administration, so packaging ships it as-is (no rebuild).
 build:
   zip:
     composer:

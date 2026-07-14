@@ -48,7 +48,6 @@ final class FdPrismPayment extends Plugin
     {
         parent::install($installContext);
         $this->upsertPaymentMethod($installContext->getContext());
-        $this->upsertOrderCustomFields($installContext->getContext());
         // Create the method INACTIVE on install (explicit, per Shopware's payment-plugin guide).
         // activate() flips it on. The shared upsertPaymentMethod() deliberately omits `active` so
         // update() preserves the operator's choice — so we set the install-time default here.
@@ -58,22 +57,18 @@ final class FdPrismPayment extends Plugin
     public function activate(ActivateContext $activateContext): void
     {
         parent::activate($activateContext);
-        // Idempotent upserts so both exist even if the plugin was installed before this code
+        // Idempotent upsert so the method exists even if the plugin was installed before this code
         // was added; then mark the payment method active.
         $this->upsertPaymentMethod($activateContext->getContext());
-        $this->upsertOrderCustomFields($activateContext->getContext());
         $this->setPaymentMethodActive(true, $activateContext->getContext());
     }
 
     public function update(UpdateContext $updateContext): void
     {
         parent::update($updateContext);
-        // Shopware calls update() on a version upgrade — NOT install()/activate(). Re-run the
-        // idempotent definition upserts so payment-method / order-custom-field changes between
-        // versions are applied on update too. Deliberately does not toggle the active state
-        // (an update must preserve whatever the operator set).
+        // update() runs on version upgrade (not install/activate); re-run the idempotent upsert.
+        // Does not toggle active state — an update preserves the operator's choice.
         $this->upsertPaymentMethod($updateContext->getContext());
-        $this->upsertOrderCustomFields($updateContext->getContext());
     }
 
     public function deactivate(DeactivateContext $deactivateContext): void
@@ -156,45 +151,6 @@ final class FdPrismPayment extends Plugin
         $repository->upsert([[
             'id' => PrismX402PaymentHandler::PAYMENT_METHOD_ID,
             'active' => $active,
-        ]], $context);
-    }
-
-    private function upsertOrderCustomFields(Context $context): void
-    {
-        /** @var EntityRepository $repository */
-        $repository = $this->container->get('custom_field_set.repository');
-
-        $repository->upsert([[
-            'id' => OrderCustomFields::SET_ID,
-            'name' => OrderCustomFields::SET_NAME,
-            'config' => [
-                'label' => ['en-GB' => 'Prism payment', 'de-DE' => 'Prism-Zahlung'],
-                'translated' => true,
-            ],
-            'relations' => [[
-                'id' => OrderCustomFields::RELATION_ID,
-                'entityName' => 'order',
-            ]],
-            'customFields' => [
-                [
-                    'id' => OrderCustomFields::EXPLORER_ID,
-                    'name' => OrderCustomFields::EXPLORER_URL,
-                    'type' => 'text',
-                    'config' => [
-                        'label' => ['en-GB' => 'Payment confirmation', 'de-DE' => 'Zahlungsbestätigung'],
-                        'helpText' => [
-                            'en-GB' => 'Opens the on-chain settlement on the public block explorer.',
-                            'de-DE' => 'Öffnet die On-Chain-Abwicklung im öffentlichen Block-Explorer.',
-                        ],
-                        'customFieldType' => 'text',
-                        'customFieldPosition' => 1,
-                        // Render read-only in admin: sw-form-field-renderer forwards extra
-                        // config props to the underlying input. The settlement link is a
-                        // record, not editable metadata.
-                        'disabled' => true,
-                    ],
-                ],
-            ],
         ]], $context);
     }
 

@@ -5,6 +5,15 @@
         <title>Prism payment</title>
         <title lang="de-DE">Prism-Zahlung</title>
 
+        <input-field type="text">
+            <name>prismGatewayUrl</name>
+            <label>Prism Gateway</label>
+            <label lang="de-DE">Prism-Gateway</label>
+            <defaultValue>https://prism-gw.fd.xyz</defaultValue>
+            <helpText>Base URL of the Prism gateway that settles payments. Leave the default unless directed otherwise. The merchant "View details on Prism" link is derived from this host.</helpText>
+            <helpText lang="de-DE">Basis-URL des Prism-Gateways, über das Zahlungen abgewickelt werden. Standard beibehalten, sofern nicht anders angewiesen. Der Händler-Link „Details in Prism anzeigen“ wird aus diesem Host abgeleitet.</helpText>
+        </input-field>
+
         <input-field type="password">
             <name>prismApiKey</name>
             <label>Prism API key</label>

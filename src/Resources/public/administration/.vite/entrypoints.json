@@ -1,0 +1,25 @@
+{
+  "base": "/bundles/fdprismpayment/administration/",
+  "entryPoints": {
+    "fd-prism-payment": {
+      "css": [
+        "/bundles/fdprismpayment/administration/assets/fd-prism-payment-Bz84IcZc.css"
+      ],
+      "dynamic": [],
+      "js": [
+        "/bundles/fdprismpayment/administration/assets/fd-prism-payment-BdxjZqUZ.js"
+      ],
+      "legacy": false,
+      "preload": []
+    }
+  },
+  "legacy": false,
+  "metadatas": {},
+  "version": [
+    "7.1.0",
+    7,
+    1,
+    0
+  ],
+  "viteServer": null
+}

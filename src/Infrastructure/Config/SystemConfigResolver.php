@@ -23,9 +23,12 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
  */
 final class SystemConfigResolver implements ConfigResolver
 {
+    /** Default gateway, used when the operator has not overridden {@see GATEWAY_URL_CONFIG_KEY}. */
     private const PROD_URL = 'https://prism-gw.fd.xyz';
 
     public const API_KEY_CONFIG_KEY = 'FdPrismPayment.config.prismApiKey';
+
+    public const GATEWAY_URL_CONFIG_KEY = 'FdPrismPayment.config.prismGatewayUrl';
 
     public function __construct(
         private readonly SystemConfigService $systemConfig,
@@ -71,7 +74,10 @@ final class SystemConfigResolver implements ConfigResolver
             return rtrim($url, '/');
         }
 
-        return self::PROD_URL;
+        // Store-wide setting (unlike the per-channel key); fall back to the prod default when unset.
+        $configured = trim($this->systemConfig->getString(self::GATEWAY_URL_CONFIG_KEY));
+
+        return '' !== $configured ? rtrim($configured, '/') : self::PROD_URL;
     }
 
     public function isDeveloperMode(): bool
