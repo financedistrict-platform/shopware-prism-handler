@@ -1,0 +1,56 @@
+{% block fd_prism_payment_card %}
+<sw-card
+    v-if="isPrismOrder"
+    class="fd-prism-card"
+    title="Prism payment"
+    position-identifier="fd-prism-payment-card"
+>
+    {% block fd_prism_payment_card_help %}
+    <template #headerRight>
+        <sw-help-text text="Stablecoin payment settled on-chain through Prism. Details were captured at settlement." />
+    </template>
+    {% endblock %}
+
+    {% block fd_prism_payment_card_hero %}
+    <div class="fd-prism-card__hero">
+        <span class="fd-prism-card__amount">{{ amountText }} <span class="fd-prism-card__sym">{{ symbolText }}</span></span>
+        <span class="fd-prism-card__pill"><span class="fd-prism-card__dot"></span>Paid</span>
+    </div>
+    {% endblock %}
+
+    {% block fd_prism_payment_card_rows %}
+    <div class="fd-prism-card__rows">
+        <div class="fd-prism-card__row">
+            <span class="fd-prism-card__k">Network</span>
+            <span class="fd-prism-card__v">{{ networkText }}</span>
+        </div>
+        <div class="fd-prism-card__row">
+            <span class="fd-prism-card__k">Paid at</span>
+            <span class="fd-prism-card__v">{{ paidAtText }}</span>
+        </div>
+    </div>
+    {% endblock %}
+
+    {% block fd_prism_payment_card_notice %}
+    <div v-if="hasUnmapped" class="fd-prism-card__notice">
+        <span class="fd-prism-card__notice-icon">!</span>
+        <span class="fd-prism-card__notice-text">
+            Some payment details couldn't be shown in a friendly format and appear as raw values.
+            Please report this to Prism so we can add them.
+        </span>
+    </div>
+    {% endblock %}
+
+    {% block fd_prism_payment_card_foot %}
+    <div class="fd-prism-card__foot">
+        <a
+            v-if="prismUrl"
+            :href="prismUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="fd-prism-card__link"
+        >View details on Prism →</a>
+    </div>
+    {% endblock %}
+</sw-card>
+{% endblock %}

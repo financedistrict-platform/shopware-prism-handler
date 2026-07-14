@@ -1,0 +1,118 @@
+// 2a — refined hybrid. The card SHELL (border, radius, shadow, header, "?" help,
+// width cap, spacing) is the native mt-card; we only style the body here, using
+// Shopware theme tokens so it fits the admin in every theme.
+.fd-prism-card {
+    &__hero {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        padding: 4px 0 20px;
+    }
+
+    &__amount {
+        font-size: 30px;
+        font-weight: 700;
+        color: var(--color-text-primary-default);
+        letter-spacing: -0.01em;
+        line-height: 1;
+    }
+
+    &__sym {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--color-text-secondary-default);
+    }
+
+    &__pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 4px 12px;
+        border-radius: 4px;
+        background: var(--color-background-positive-default);
+        color: var(--color-text-positive-default);
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    &__dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--color-border-positive-default);
+    }
+
+    &__rows {
+        border-top: 1px solid var(--color-border-primary-default);
+    }
+
+    &__row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 0;
+
+        & + & {
+            border-top: 1px solid var(--color-border-primary-default);
+        }
+    }
+
+    &__k {
+        font-size: 14px;
+        color: var(--color-text-secondary-default);
+    }
+
+    &__v {
+        font-size: 15px;
+        color: var(--color-text-primary-default);
+    }
+
+    &__notice {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-top: 16px;
+        padding: 12px 14px;
+        border: 1px solid var(--color-border-caution-default);
+        background: var(--color-background-caution-default);
+        border-radius: 4px;
+    }
+
+    &__notice-icon {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--color-border-caution-default);
+        color: var(--color-text-caution-default);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    &__notice-text {
+        font-size: 13px;
+        color: var(--color-text-caution-default);
+    }
+
+    &__foot {
+        border-top: 1px solid var(--color-border-primary-default);
+        padding-top: 16px;
+        text-align: right;
+    }
+
+    &__link {
+        color: var(--color-text-brand-default);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 600;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+}

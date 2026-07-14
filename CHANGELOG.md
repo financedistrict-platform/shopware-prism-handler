@@ -1,3 +1,23 @@
+# 0.2.0
+Merchant payment card in the order admin — the plugin's first admin UI. A native "Prism payment"
+card on the order Detail tab shows a settled order's stablecoin payment in plain merchant language,
+rendered entirely from data captured at settle time (never re-polls Prism).
+
+- **New "Prism payment" card** on Order → Details: amount + token symbol (e.g. `5.02 FDUSD`),
+  network, paid-at, and a "View details on Prism" link carrying `?tx&network&source`. Raw on-chain
+  facts are humanized with a plugin-owned token/network map; anything the map doesn't know falls back
+  to the raw value plus a "report to Prism" note, so the card never breaks. Styled with Shopware
+  theme tokens (no hardcoded colours), so it follows the admin theme.
+- **Retired the custom-field surface.** The generic "Custom fields → Prism payment" card (which
+  showed the raw block-explorer URL) is removed — the dedicated card replaces it. A migration deletes
+  the custom-field set; residual JSON keys are left inert.
+- **Settlement is linked to its order.** New `order_id` column on the settlement table, set at
+  complete, so the admin reads the settlement by order id via a small admin-API endpoint (reads our
+  own store only — never Prism). Additive migration, runs automatically on update.
+- **Prism gateway is now operator-configurable.** New `Prism Gateway` config field (defaults to the
+  production gateway); the settle path and the card's "View details on Prism" link both derive from
+  it. Developer mode still overrides via the `PRISM_URL` env.
+
 # 0.1.8
 Checkout-complete hardening — surfaces Prism's decline verdict to the agent, and stops an idempotent
 re-complete from fighting a merchant's later payment cancellation. Code-only: no API, config, or DB

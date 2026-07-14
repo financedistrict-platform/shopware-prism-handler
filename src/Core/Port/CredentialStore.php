@@ -58,4 +58,9 @@ interface CredentialStore
     public function markSettled(string $sessionId, string $transactionHash, string $network): void;
 
     public function markFailed(string $sessionId): void;
+
+    /**
+     * Link the (session-keyed) settlement row to its placed order, so it can be read by order id.
+     */
+    public function linkOrder(string $sessionId, string $orderId): void;
 }
