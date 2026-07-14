@@ -9,9 +9,11 @@ use Fd\PrismPayment\Application\Ucp\PrismCheckoutAdapter;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\PrismGateway;
+use Fd\PrismPayment\Core\Port\SettlementReadModel;
 use Fd\PrismPayment\Infrastructure\Config\SystemConfigResolver;
 use Fd\PrismPayment\Infrastructure\Http\PrismHttpClient;
 use Fd\PrismPayment\Infrastructure\Persistence\DbalCredentialStore;
+use Fd\PrismPayment\Infrastructure\Persistence\DbalSettlementReadModel;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
@@ -35,6 +37,7 @@ return static function (ContainerConfigurator $container): void {
     // themselves are registered + autowired by the load() above.
     $services->alias(PrismGateway::class, PrismHttpClient::class);
     $services->alias(CredentialStore::class, DbalCredentialStore::class);
+    $services->alias(SettlementReadModel::class, DbalSettlementReadModel::class);
     $services->alias(ConfigResolver::class, SystemConfigResolver::class);
 
     // The Shopware payment method handler is resolved by the core via this tag (service id
@@ -49,6 +52,5 @@ return static function (ContainerConfigurator $container): void {
         ->decorate('Swag\\AgenticCommerce\\Ucp\\Adapter\\ShopwareCheckoutAdapter')
         ->autowire()
         ->arg('$inner', service('.inner'))
-        ->arg('$transactionRepository', service('order_transaction.repository'))
-        ->arg('$orderRepository', service('order.repository'));
+        ->arg('$transactionRepository', service('order_transaction.repository'));
 };

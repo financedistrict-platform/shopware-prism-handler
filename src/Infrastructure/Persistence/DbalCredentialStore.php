@@ -212,6 +212,15 @@ final class DbalCredentialStore implements CredentialStore
         );
     }
 
+    public function linkOrder(string $sessionId, string $orderId): void
+    {
+        // order_id is BINARY(16) (matches order.id); UNHEX the hex id. Not a state change → leave updated_at.
+        $this->connection->executeStatement(
+            'UPDATE fd_prism_payment_settlement SET order_id = UNHEX(:orderId) WHERE checkout_session_id = :id',
+            ['orderId' => $orderId, 'id' => $sessionId],
+        );
+    }
+
     /**
      * @param array<array-key, mixed> $value
      */

@@ -7,14 +7,12 @@ namespace Fd\PrismPayment\Application\Ucp;
 use Doctrine\DBAL\Connection;
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
-use Fd\PrismPayment\Core\BlockExplorer;
 use Fd\PrismPayment\Core\Payment\AcceptsMatcher;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
 use Fd\PrismPayment\Core\Settlement\SettlementStateMachine;
-use Fd\PrismPayment\Infrastructure\OrderCustomFields;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStateHandler;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStates;
 use Shopware\Core\Framework\Context;
@@ -56,8 +54,6 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
         private RequestSalesChannelResolver $salesChannelResolver,
         private OrderTransactionStateHandler $transactionStateHandler,
         private EntityRepository $transactionRepository,
-        private EntityRepository $orderRepository,
-        private BlockExplorer $blockExplorer,
         private Connection $connection,
         private SettlementStateMachine $stateMachine,
         private AcceptsMatcher $acceptsMatcher,
@@ -238,6 +234,9 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
             throw new \RuntimeException('Completed checkout has no order id to attach the settlement to.');
         }
 
+        // The row is keyed by checkout session; link it to the order so admin can look it up.
+        $this->store->linkOrder($record->checkoutSessionId, $orderId);
+
         $row = $this->connection->fetchAssociative(
             'SELECT LOWER(HEX(ot.id)) AS id, sms.technical_name AS state
              FROM order_transaction ot
@@ -274,28 +273,11 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
             $this->transactionStateHandler->paid($transactionId, $shopwareContext);
         }
 
-        // Reattribute the transaction to our dedicated method (the base places the order with
-        // the sales-channel default) and record the on-chain proof. Idempotent: customFields
-        // are merged by the DAL and the payment method id is stable.
+        // The base places the order on the sales-channel default; reattribute to our method
+        // (stable id, so idempotent on re-complete).
         $this->transactionRepository->update([[
             'id' => $transactionId,
             'paymentMethodId' => PrismX402PaymentHandler::PAYMENT_METHOD_ID,
-            'customFields' => [
-                'fd_prism_payment' => [
-                    'transaction' => $record->transactionHash,
-                    'network' => $record->network,
-                ],
-            ],
-        ]], $shopwareContext);
-
-        // Surface the human-useful settlement reference on the order (Shopware auto-renders a
-        // Custom-fields card): the explorer URL when the network is mapped, else "network: txHash"
-        // so it's never a dead end. Raw tx hash + network also stay on the transaction + UCP response.
-        $this->orderRepository->update([[
-            'id' => $orderId,
-            'customFields' => [
-                OrderCustomFields::EXPLORER_URL => $this->blockExplorer->reference($record->network, $record->transactionHash),
-            ],
         ]], $shopwareContext);
     }
 

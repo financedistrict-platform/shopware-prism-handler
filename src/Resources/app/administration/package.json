@@ -1,0 +1,6 @@
+{
+    "name": "fd-prism-payment-admin",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Administration extension for FD Prism Payment (order-detail merchant card)"
+}
