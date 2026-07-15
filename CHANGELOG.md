@@ -1,3 +1,14 @@
+# 0.2.1
+Give the x402 offer a human-readable purchase summary. Until now the payment-requirements request
+sent Prism only the resource URL and no `description`, so the wallet prompt and Prism's sales view
+had nothing describing what was being paid for. Code-only: no API, config, or DB change.
+
+- **Cart-derived offer description.** When we quote Prism for the per-session payment requirements,
+  we now build a short summary from the cart line items (title + quantity, e.g. `Bronze Lamp ×2,
+  Cotton Tote`), capped at 100 chars, and pass it as the x402 `resource.description`. An empty or
+  untitled cart sends no description, exactly as before. Captured on the quote that records the
+  offer; the cached offer path is unchanged, so what the agent signs stays byte-stable.
+
 # 0.2.0
 Merchant payment card in the order admin — the plugin's first admin UI. A native "Prism payment"
 card on the order Detail tab shows a settled order's stablecoin payment in plain merchant language,

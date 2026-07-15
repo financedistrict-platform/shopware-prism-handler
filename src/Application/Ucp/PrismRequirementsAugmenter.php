@@ -90,7 +90,7 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
                     $fiatAmount,
                     $currency,
                     $resourceUrl,
-                    null,
+                    $this->describeCart($checkout),
                 );
             } catch (PrismApiException $e) {
                 // F6: Prism is unreachable / errored. Degrade instead of failing the whole checkout
@@ -168,6 +168,35 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         }
 
         return null;
+    }
+
+    // A human-readable purchase summary for the x402 resource (shown by the wallet / on Prism's
+    // side). Item titles + quantities, capped so the offer stays compact; null when the cart has
+    // no usable titles, which the gateway treats as no description.
+    private const MAX_DESCRIPTION_LENGTH = 100;
+
+    private function describeCart(Checkout $checkout): ?string
+    {
+        $parts = [];
+        foreach ($checkout->lineItems as $item) {
+            $title = trim($item->title);
+            if ('' === $title) {
+                continue;
+            }
+
+            $parts[] = $item->quantity > 1 ? sprintf('%s ×%d', $title, $item->quantity) : $title;
+        }
+
+        if ([] === $parts) {
+            return null;
+        }
+
+        $description = implode(', ', $parts);
+        if (mb_strlen($description) > self::MAX_DESCRIPTION_LENGTH) {
+            $description = rtrim(mb_substr($description, 0, self::MAX_DESCRIPTION_LENGTH - 1)) . '…';
+        }
+
+        return $description;
     }
 
     private function formatAmount(float $amount): string
