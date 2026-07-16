@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Fd\PrismPayment\Application\Ucp;
 
-use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Ucp\HandlerId;
 use Ucp\Sdk\Contract\PaymentHandlerInterface;
 use Ucp\Sdk\Model\Checkout\PaymentInstrument;
@@ -15,10 +14,11 @@ use Ucp\Sdk\Model\RequestContext;
  * Advertises the Prism/x402 payment handler in the UCP platform profile
  * (`GET /.well-known/ucp` → `payment_handlers["xyz.fd.prism_payment"]`).
  *
- * The descriptor is static: id/version are protocol-level constants (they track Prism's
- * x402 handler and are bumped per plugin release), and the public spec/schema URLs are
- * derived from the resolved gateway. Discovery therefore needs no API key and makes no live
- * Prism call — it cannot be broken by Prism downtime or an unconfigured merchant key. The
+ * The id/version and the spec/schema URLs are Prism's to declare — this handler does not invent
+ * them, it re-advertises what Prism publishes at its public handlers endpoint. Resolving that
+ * declaration (live-with-cache, static fallback) is delegated to {@see HandlerDeclarationProvider};
+ * this class only maps it into the SDK descriptor and keeps the locally-owned registration id.
+ * Discovery still needs no API key (the source endpoint is public) and never breaks (fallback). The
  * per-session, merchant-specific data (accepts) is sourced live by the requirements augmenter.
  *
  * @internal
@@ -28,13 +28,8 @@ final readonly class PrismPaymentHandler implements PaymentHandlerInterface
     /** Externally-stable UCP handler id (Prism's), independent of the plugin name. */
     public const HANDLER_ID = HandlerId::PRISM;
 
-    /** Prism x402 handler instance id + version this release targets. */
-    private const INSTANCE_ID = 'x402';
-
-    private const HANDLER_VERSION = '2026-01-15';
-
     public function __construct(
-        private ConfigResolver $configResolver,
+        private HandlerDeclarationProvider $declarations,
     ) {
     }
 
@@ -45,15 +40,15 @@ final readonly class PrismPaymentHandler implements PaymentHandlerInterface
 
     public function describe(RequestContext $context): PaymentHandlerDescriptor
     {
-        $gateway = $this->configResolver->gatewayUrl();
+        $declaration = $this->declarations->declaration();
 
         return new PaymentHandlerDescriptor(
-            id: self::INSTANCE_ID,
+            id: $declaration->id,
             name: self::HANDLER_ID,
-            version: self::HANDLER_VERSION,
-            specUrl: $gateway . '/ucp/prism.md',
-            configSchema: $gateway . '/ucp/schema.json',
-            instrumentSchemas: [],
+            version: $declaration->version,
+            specUrl: $declaration->spec,
+            configSchema: $declaration->configSchema,
+            instrumentSchemas: $declaration->instrumentSchemas,
             config: [],
         );
     }

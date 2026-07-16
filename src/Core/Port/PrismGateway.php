@@ -30,11 +30,10 @@ interface PrismGateway
     ): array;
 
     /**
-     * Settle an x402 authorization on-chain. `paymentPayload`/`paymentRequirements` are
-     * relayed verbatim from the wallet's authorization output.
+     * Settle an x402 authorization on-chain. The whole `credential` (the wallet's signed x402
+     * output) is relayed to Prism verbatim; Prism parses and validates its x402 internals.
      *
-     * @param array<string, mixed> $paymentPayload
-     * @param array<string, mixed> $paymentRequirements
+     * @param array<string, mixed> $credential
      */
-    public function settle(PrismConfig $config, array $paymentPayload, array $paymentRequirements): SettleResult;
+    public function settle(PrismConfig $config, array $credential): SettleResult;
 }

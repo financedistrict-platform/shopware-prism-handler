@@ -41,9 +41,9 @@ use Ucp\Sdk\Model\RequestContext;
  */
 final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
 {
-    // F4: cap each agent-supplied credential object. A real x402 credential is ~1 KB; this is the
-    // primary gate (clean 422 + truncation-proof) behind the VARCHAR(4096) column backstop.
-    private const MAX_CREDENTIAL_BYTES = 4096;
+    // F4: cap the whole agent-supplied credential. A real x402 credential is ~1.5 KB; this is the
+    // primary gate (clean 422 + truncation-proof) behind the VARCHAR(8192) column backstop.
+    private const MAX_CREDENTIAL_BYTES = 8192;
 
 
     public function __construct(
@@ -83,8 +83,7 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
                 throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
             }
 
-            [$paymentPayload, $paymentRequirements] = $this->extractCredential($payment);
-            $this->store->capture($request->id, $paymentPayload, $paymentRequirements);
+            $this->store->capture($request->id, $this->validateCredential($payment));
         } elseif (null !== $payment) {
             // The agent selected a DIFFERENT payment method — we only answer to the Prism handler.
             // Release any prior Prism claim (drop the credential, back to pending) so complete
@@ -139,9 +138,10 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
         // F2 (immediately before the claim): the submitted paymentRequirements MUST be one we
         // offered for this session. Fail-closed — a missing/empty offer set refuses to settle.
         $offered = $record->offeredAccepts();
+        $submitted = $record->submittedPaymentRequirements();
         if (null === $offered
-            || null === $record->paymentRequirements
-            || !$this->acceptsMatcher->matches($offered, $record->paymentRequirements)
+            || null === $submitted
+            || !$this->acceptsMatcher->matches($offered, $submitted)
         ) {
             throw new ValidationException(
                 'The submitted payment does not match any offer issued for this checkout.',
@@ -191,10 +191,10 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
     private function settle(string $sessionId, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
     {
         // Guaranteed non-null by the hasCredential() gate + the F2 check before the claim.
-        \assert(null !== $record->paymentPayload && null !== $record->paymentRequirements);
+        \assert(null !== $record->credential);
 
         $config = $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
-        $result = $this->client->settle($config, $record->paymentPayload, $record->paymentRequirements);
+        $result = $this->client->settle($config, $record->credential);
 
         if (!$result->success) {
             $this->store->markFailed($sessionId);
@@ -282,40 +282,42 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
     }
 
     /**
-     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
+     * Validate and return the agent's x402 credential as ONE opaque object. We deliberately do NOT
+     * reach in for `paymentPayload`/`paymentRequirements`: understanding x402 is the wallet's and
+     * Prism's job, not this relay's. We only assert the credential is present and within the size
+     * bound (F4), then store + forward it verbatim.
+     *
+     * @return array<string, mixed>
      */
-    private function extractCredential(PaymentInstrument $payment): array
+    private function validateCredential(PaymentInstrument $payment): array
     {
-        $paymentPayload = $payment->credential['paymentPayload'] ?? null;
-        $paymentRequirements = $payment->credential['paymentRequirements'] ?? null;
+        $credential = $payment->credential;
 
-        if (!\is_array($paymentPayload) || !\is_array($paymentRequirements)) {
-            // L-1: a malformed credential is the agent's input error — return a clean 422
-            // (ValidationException) rather than a bare RuntimeException that surfaces as a 500.
+        if ([] === $credential) {
+            // L-1: a missing credential is the agent's input error — clean 422 (ValidationException)
+            // rather than a bare RuntimeException that surfaces as a 500.
             throw new ValidationException(
-                'Prism payment instrument credential must contain "paymentPayload" and "paymentRequirements" objects.',
+                'Prism payment instrument must carry a non-empty "credential" (the wallet\'s signed x402 payment).',
             );
         }
 
-        $this->assertWithinSizeLimit($paymentPayload, 'paymentPayload');
-        $this->assertWithinSizeLimit($paymentRequirements, 'paymentRequirements');
+        $this->assertWithinSizeLimit($credential);
 
-        return [$paymentPayload, $paymentRequirements];
+        return $credential;
     }
 
     /**
-     * F4: reject an oversized credential object at the boundary with a clean 422, before it is ever
-     * stored — measured on the same JSON encoding the store persists.
+     * F4: reject an oversized credential at the boundary with a clean 422, before it is ever stored —
+     * measured on the same JSON encoding the store persists.
      *
-     * @param array<string, mixed> $value
+     * @param array<string, mixed> $credential
      */
-    private function assertWithinSizeLimit(array $value, string $field): void
+    private function assertWithinSizeLimit(array $credential): void
     {
-        $encoded = json_encode($value);
+        $encoded = json_encode($credential);
         if (false === $encoded || \strlen($encoded) > self::MAX_CREDENTIAL_BYTES) {
             throw new ValidationException(sprintf(
-                'Prism payment credential "%s" exceeds the maximum allowed size of %d bytes.',
-                $field,
+                'Prism payment credential exceeds the maximum allowed size of %d bytes.',
                 self::MAX_CREDENTIAL_BYTES,
             ));
         }

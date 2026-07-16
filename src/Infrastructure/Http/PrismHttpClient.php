@@ -60,12 +60,12 @@ final readonly class PrismHttpClient implements PrismGateway
         return $this->parser->paymentRequirementsEntry($data);
     }
 
-    public function settle(PrismConfig $config, array $paymentPayload, array $paymentRequirements): SettleResult
+    public function settle(PrismConfig $config, array $credential): SettleResult
     {
-        $data = $this->post($config, self::SETTLE_PATH, [
-            'paymentPayload' => $paymentPayload,
-            'paymentRequirements' => $paymentRequirements,
-        ], self::SETTLE_TIMEOUT_SECONDS);
+        // Forward the wallet's whole signed x402 credential verbatim. It already carries the
+        // {paymentPayload, paymentRequirements} Prism's /settle reads; we neither unwrap nor
+        // reshape it (that x402 knowledge lives in Prism, not this relay).
+        $data = $this->post($config, self::SETTLE_PATH, $credential, self::SETTLE_TIMEOUT_SECONDS);
 
         return $this->parser->settleResult($data);
     }

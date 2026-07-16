@@ -38,13 +38,13 @@ interface CredentialStore
     public function releaseToBase(string $sessionId): void;
 
     /**
-     * Capture (or replace) the pending credential for a session. Must NEVER overwrite a settled
-     * row (F0): the implementation guards the upsert so a settled row is a no-op.
+     * Capture (or replace) the pending credential for a session — the wallet's whole signed x402
+     * object, stored verbatim (never split). Must NEVER overwrite a settled row (F0): the
+     * implementation guards the upsert so a settled row is a no-op.
      *
-     * @param array<string, mixed> $paymentPayload
-     * @param array<string, mixed> $paymentRequirements
+     * @param array<string, mixed> $credential
      */
-    public function capture(string $sessionId, array $paymentPayload, array $paymentRequirements): void;
+    public function capture(string $sessionId, array $credential): void;
 
     /**
      * Atomically claim the settle: move pending -> settling and report whether THIS caller won.
