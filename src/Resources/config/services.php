@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\DependencyInjection;
 
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
+use Fd\PrismPayment\Application\Ucp\HandlerDeclarationProvider;
 use Fd\PrismPayment\Application\Ucp\PrismCheckoutAdapter;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
+use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
 use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Port\SettlementReadModel;
 use Fd\PrismPayment\Infrastructure\Config\SystemConfigResolver;
+use Fd\PrismPayment\Infrastructure\Http\HttpHandlerDeclarationSource;
 use Fd\PrismPayment\Infrastructure\Http\PrismHttpClient;
 use Fd\PrismPayment\Infrastructure\Persistence\DbalCredentialStore;
 use Fd\PrismPayment\Infrastructure\Persistence\DbalSettlementReadModel;
@@ -39,6 +42,19 @@ return static function (ContainerConfigurator $container): void {
     $services->alias(CredentialStore::class, DbalCredentialStore::class);
     $services->alias(SettlementReadModel::class, DbalSettlementReadModel::class);
     $services->alias(ConfigResolver::class, SystemConfigResolver::class);
+    $services->alias(HandlerDeclarationSource::class, HttpHandlerDeclarationSource::class);
+
+    // Dedicated PSR-6/contracts cache pool (a namespaced child of the app cache) that backs the
+    // handler-declaration cache. Using a pool — not an in-process property — is what survives the
+    // PHP-FPM per-request reset; it resolves to whatever the store configured (Redis/APCu/file).
+    $services->set('fd_prism.cache')
+        ->parent('cache.app')
+        ->tag('cache.pool');
+
+    // Discovery declaration is fetched live from Prism and cached in that pool (see the provider).
+    $services->set(HandlerDeclarationProvider::class)
+        ->autowire()
+        ->arg('$cache', service('fd_prism.cache'));
 
     // The Shopware payment method handler is resolved by the core via this tag (service id
     // == handlerIdentifier). No marker interface exists for autoconfigure, so tag explicitly.

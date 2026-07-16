@@ -66,7 +66,7 @@ final class DbalCredentialStore implements CredentialStore
         // failed so complete refuses until a fresh signature is submitted. Settled rows untouched.
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
-             SET status = :failed, payment_payload = NULL, payment_requirements = NULL, updated_at = :now
+             SET status = :failed, credential = NULL, updated_at = :now
              WHERE checkout_session_id = :id AND status <> :settled',
             [
                 'id' => $sessionId,
@@ -83,7 +83,7 @@ final class DbalCredentialStore implements CredentialStore
         // complete defers to the base flow. Settled rows untouched.
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
-             SET status = :pending, payment_payload = NULL, payment_requirements = NULL, updated_at = :now
+             SET status = :pending, credential = NULL, updated_at = :now
              WHERE checkout_session_id = :id AND status <> :settled',
             [
                 'id' => $sessionId,
@@ -95,32 +95,30 @@ final class DbalCredentialStore implements CredentialStore
     }
 
     /**
-     * Capture (or replace) the pending credential. The conditional upsert leaves a `settled` row
-     * completely untouched (F0) AND a `settling` row untouched (a re-capture mid-settle would reset
-     * it to `pending` and let a second `complete` re-claim → double settle). Only `pending`/`failed`
-     * rows are overwritten. Each assignment is guarded on the row's ORIGINAL status, and `status` is
-     * assigned last so the earlier guards see the pre-update value.
+     * Capture (or replace) the pending credential — the wallet's whole signed x402 object, stored
+     * verbatim. The conditional upsert leaves a `settled` row completely untouched (F0) AND a
+     * `settling` row untouched (a re-capture mid-settle would reset it to `pending` and let a second
+     * `complete` re-claim → double settle). Only `pending`/`failed` rows are overwritten. Each
+     * assignment is guarded on the row's ORIGINAL status, and `status` is assigned last so the
+     * earlier guards see the pre-update value.
      *
-     * @param array<string, mixed> $paymentPayload
-     * @param array<string, mixed> $paymentRequirements
+     * @param array<string, mixed> $credential
      */
-    public function capture(string $sessionId, array $paymentPayload, array $paymentRequirements): void
+    public function capture(string $sessionId, array $credential): void
     {
         $this->connection->executeStatement(
             'INSERT INTO fd_prism_payment_settlement
-                (checkout_session_id, payment_payload, payment_requirements, status, transaction_hash, network, created_at)
-             VALUES (:id, :pp, :pr, :pending, NULL, NULL, :now)
+                (checkout_session_id, credential, status, transaction_hash, network, created_at)
+             VALUES (:id, :cred, :pending, NULL, NULL, :now)
              ON DUPLICATE KEY UPDATE
-                payment_payload      = IF(status IN (:settled, :settling), payment_payload, :pp),
-                payment_requirements = IF(status IN (:settled, :settling), payment_requirements, :pr),
-                transaction_hash     = IF(status IN (:settled, :settling), transaction_hash, NULL),
-                network              = IF(status IN (:settled, :settling), network, NULL),
-                updated_at           = IF(status IN (:settled, :settling), updated_at, :now),
-                status               = IF(status IN (:settled, :settling), status, :pending)',
+                credential       = IF(status IN (:settled, :settling), credential, :cred),
+                transaction_hash = IF(status IN (:settled, :settling), transaction_hash, NULL),
+                network          = IF(status IN (:settled, :settling), network, NULL),
+                updated_at       = IF(status IN (:settled, :settling), updated_at, :now),
+                status           = IF(status IN (:settled, :settling), status, :pending)',
             [
                 'id' => $sessionId,
-                'pp' => $this->encode($paymentPayload),
-                'pr' => $this->encode($paymentRequirements),
+                'cred' => $this->encode($credential),
                 'pending' => SettlementStatus::PENDING,
                 'settled' => SettlementStatus::SETTLED,
                 'settling' => SettlementStatus::SETTLING,
@@ -149,7 +147,7 @@ final class DbalCredentialStore implements CredentialStore
     public function load(string $sessionId): ?PrismSettlementRecord
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT payment_payload, payment_requirements, status, transaction_hash, network, offered_accepts
+            'SELECT credential, status, transaction_hash, network, offered_accepts
              FROM fd_prism_payment_settlement WHERE checkout_session_id = :id',
             ['id' => $sessionId],
         );
@@ -173,8 +171,7 @@ final class DbalCredentialStore implements CredentialStore
 
         return new PrismSettlementRecord(
             checkoutSessionId: $sessionId,
-            paymentPayload: null !== $row['payment_payload'] ? $this->decode((string) $row['payment_payload']) : null,
-            paymentRequirements: null !== $row['payment_requirements'] ? $this->decode((string) $row['payment_requirements']) : null,
+            credential: null !== $row['credential'] ? $this->decode((string) $row['credential']) : null,
             status: (string) $row['status'],
             transactionHash: null !== $row['transaction_hash'] ? (string) $row['transaction_hash'] : null,
             network: null !== $row['network'] ? (string) $row['network'] : null,

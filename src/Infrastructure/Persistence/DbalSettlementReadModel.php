@@ -25,7 +25,7 @@ final class DbalSettlementReadModel implements SettlementReadModel
     public function findByOrderId(string $orderId): ?SettlementView
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT payment_payload, payment_requirements, offered_accepts, transaction_hash, network, updated_at
+            'SELECT credential, offered_accepts, transaction_hash, network, updated_at
              FROM fd_prism_payment_settlement
              WHERE order_id = UNHEX(:orderId) AND status = :settled
              LIMIT 1',
@@ -36,8 +36,11 @@ final class DbalSettlementReadModel implements SettlementReadModel
             return null;
         }
 
-        $requirements = $this->decode($row['payment_requirements']);
-        $payload = $this->decode($row['payment_payload']);
+        // The credential is the wallet's whole x402 object; read the display facts out of it
+        // (paymentRequirements = asset/amount, paymentPayload = payer). Read-only projection.
+        $credential = $this->decode($row['credential']);
+        $requirements = \is_array($credential['paymentRequirements'] ?? null) ? $credential['paymentRequirements'] : [];
+        $payload = \is_array($credential['paymentPayload'] ?? null) ? $credential['paymentPayload'] : [];
         $offer = $this->decode($row['offered_accepts']);
 
         return new SettlementView(
