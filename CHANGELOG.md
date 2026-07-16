@@ -1,3 +1,42 @@
+# 0.4.0
+Source the handler declaration live from Prism instead of hardcoding it, so Prism can evolve the
+handler id/version and the contract schema URLs without a plugin redeploy or a store update. The
+plugin fetches the declaration from Prism's public handlers endpoint, caches it, and falls back to a
+built-in static declaration if Prism is unreachable — discovery stays keyless and never breaks.
+
+- **Handler declaration is fetched, not hardcoded.** `describe()` no longer emits hardcoded
+  `id`/`version`/schema URLs; it re-advertises whatever Prism publishes at
+  `GET /api/v2/merchant/ucp/handlers` (the single source of truth). A new `HandlerDeclarationProvider`
+  resolves it in three layers: an **in-request memo**, a **cross-request cache pool** (1h TTL, backed
+  by the store's configured cache — Redis/APCu/filesystem, via a dedicated `fd_prism.cache` pool), and
+  a **static fallback** (short 60s negative TTL) so a Prism blip can't break the UCP profile. The fetch
+  is **keyless** — the endpoint is public and merchant-independent — so discovery still needs no API key.
+- **Cache key scoped to the gateway URL.** Reconfiguring the Prism gateway (dev↔prod) invalidates the
+  cached declaration naturally, so a store never advertises the previous environment's contract.
+- **Only the registration id stays local.** The plugin still owns `xyz.fd.prism_payment` (the UCP id it
+  registers + advertises under); everything else in the descriptor now comes from Prism.
+
+# 0.3.0
+Make the payment credential discoverable, and stop the plugin from speaking x402. A buyer agent can
+now learn the exact instrument shape from discovery, and the plugin carries the wallet's signed
+payment verbatim instead of taking it apart and rebuilding it. DB change (new migration).
+
+- **Instrument schema is now discoverable.** The handler declaration populates `instrument_schemas`
+  with Prism's `/ucp/instrument_schema.json` URL, so an agent can build the `payment` instrument from
+  discovery alone — no out-of-band knowledge. Previously it was empty and the credential shape was
+  undocumented.
+- **Credential carried verbatim (no hand-assembly).** The plugin no longer splits the credential into
+  `paymentPayload`/`paymentRequirements` on the way in and reassembles them on the way out. It now
+  captures the wallet's whole signed x402 object, stores it as one value, and forwards it to Prism's
+  settle endpoint unchanged — x402 knowledge stays in the wallet and Prism, so the plugin is
+  x402-version-blind. The anti-scam offer match is unchanged (read-only, still fail-closed).
+- **Settlement store: one `credential` column.** Migration `1781900000` adds a single `credential`
+  column (TEXT) and **backfills it from the existing `payment_payload` / `payment_requirements`
+  rows**, so settlements recorded before this release keep rendering in the admin card. The old
+  columns are dropped only by the migration's destructive step (deferred — not run on a plugin
+  update), so they remain as a safety net until explicitly cleaned up. The admin settlement card
+  reads the same facts from the credential.
+
 # 0.2.1
 Give the x402 offer a human-readable purchase summary. Until now the payment-requirements request
 sent Prism only the resource URL and no `description`, so the wallet prompt and Prism's sales view
