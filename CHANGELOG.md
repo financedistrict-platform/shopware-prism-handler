@@ -1,3 +1,15 @@
+# 0.5.0
+Drop the environment-variable config path. The gateway URL and API key now come **only** from the
+plugin's admin config fields (system_config); the `DEVELOPER_MODE` / `PRISM_URL` / `PRISM_API_KEY`
+env override has been removed.
+
+- **`DEVELOPER_MODE` no longer exists.** Previously, `DEVELOPER_MODE=true` made the resolver ignore
+  both admin fields and read the gateway/key from the `PRISM_URL` / `PRISM_API_KEY` env vars. That
+  branch is gone — `resolve()` and `gatewayUrl()` always read system_config. To point a store at the
+  test gateway, set the **Prism Gateway** field; per-sales-channel keys go in **Prism API key**.
+- **Migration.** Any deployment (test/ECS, local lab) that relied on the env vars must now set the two
+  admin config fields instead. The gateway field still defaults to `https://prism-gw.fd.xyz` when unset.
+
 # 0.4.0
 Source the handler declaration live from Prism instead of hardcoding it, so Prism can evolve the
 handler id/version and the contract schema URLs without a plugin redeploy or a store update. The

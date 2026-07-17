@@ -21,6 +21,4 @@ interface ConfigResolver
      * (describe) to build the public spec/schema URLs without depending on a configured key.
      */
     public function gatewayUrl(): string;
-
-    public function isDeveloperMode(): bool;
 }
