@@ -1,3 +1,21 @@
+# 0.6.0
+Move to UCP 2026-08-25 via SwagAgenticCommerce 1.3.0 / ucp-php-sdk 0.0.7. Requires
+`shopware/agentic-commerce >=1.3.0`.
+
+- **Handler id `xyz.fd.prism_payment`.** The advertised handler `id` now equals the instrument
+  `handler_id` (was `x402`); the built-in fallback declares version `2026-10-07`.
+- **Discovery fetch sends `X-API-Key`.** The handlers fetch uses the sales channel's Prism API key, follows
+  no redirects, and only accepts `https` URLs on the gateway host. Any failure (unresolved sales channel,
+  missing key, fetch or shape error) still falls back to the static declaration, so discovery never breaks.
+- **Descriptor mapped from Prism's new entry.** `config_schema` is Prism's `schema` URL; `instrument_schemas`
+  is the instrument schema linked from that document at `$defs["xyz.fd.prism_payment"].instrument`.
+- **Payment accepted on complete.** The checkout adapter implements `PaymentAwareCheckoutAdapterInterface`,
+  so the Prism instrument sent in `payment.instruments` on complete is captured and settled once. Sending
+  it on update still works.
+- **Instrument and credential `type` must be `x402`.** Other values (including the SDK default `tokenized`
+  for a missing instrument `type`) are rejected with a 422 before anything is stored or settled.
+- **Known limitation.** A missing instrument `id` cannot be detected (the SDK model has no `id`).
+
 # 0.5.0
 Drop the environment-variable config path. The gateway URL and API key now come **only** from the
 plugin's admin config fields (system_config); the `DEVELOPER_MODE` / `PRISM_URL` / `PRISM_API_KEY`

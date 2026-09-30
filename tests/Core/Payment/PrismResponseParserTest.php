@@ -22,7 +22,7 @@ final class PrismResponseParserTest extends TestCase
     {
         $entry = [
             'id' => 'x402',
-            'version' => '2026-01-15',
+            'version' => '2026-10-07',
             'config' => ['x402Version' => 2, 'accepts' => [['scheme' => 'exact']]],
         ];
 
