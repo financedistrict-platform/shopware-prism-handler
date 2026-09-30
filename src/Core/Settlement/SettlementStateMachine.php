@@ -52,6 +52,11 @@ final class SettlementStateMachine
         return SettlementStatus::PENDING === $status || SettlementStatus::FAILED === $status;
     }
 
+    public function mayRelease(string $status): bool
+    {
+        return SettlementStatus::PENDING === $status || SettlementStatus::FAILED === $status;
+    }
+
     /**
      * Whether a settle may be atomically claimed (pending -> settling) from this status.
      * Only a pending row may be claimed; this is the single gate that makes settle once-only

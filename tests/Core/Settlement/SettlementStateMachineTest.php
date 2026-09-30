@@ -102,6 +102,23 @@ final class SettlementStateMachineTest extends TestCase
         yield 'settled may NOT be recaptured (F0)' => [SettlementStatus::SETTLED, false];
     }
 
+    #[DataProvider('releaseCases')]
+    public function testMayRelease(string $status, bool $expected): void
+    {
+        self::assertSame($expected, $this->sm->mayRelease($status));
+    }
+
+    /**
+     * @return iterable<string, array{string, bool}>
+     */
+    public static function releaseCases(): iterable
+    {
+        yield 'pending may be released' => [SettlementStatus::PENDING, true];
+        yield 'failed may be released' => [SettlementStatus::FAILED, true];
+        yield 'settling may NOT be released or canceled mid-settle' => [SettlementStatus::SETTLING, false];
+        yield 'settled may NOT be released or canceled' => [SettlementStatus::SETTLED, false];
+    }
+
     #[DataProvider('claimCases')]
     public function testMayClaimSettle(string $status, bool $expected): void
     {

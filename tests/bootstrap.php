@@ -22,6 +22,7 @@ spl_autoload_register(static function (string $class): void {
     $prefixes = [
         'Fd\\PrismPayment\\Tests\\' => __DIR__ . '/',
         'Fd\\PrismPayment\\' => __DIR__ . '/../src/',
+        'Doctrine\\DBAL\\' => __DIR__ . '/Support/Doctrine/DBAL/',
     ];
 
     foreach ($prefixes as $prefix => $baseDir) {

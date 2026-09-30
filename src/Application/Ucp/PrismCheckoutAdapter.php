@@ -217,6 +217,12 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             );
         }
 
+        if (null !== $record && !$this->stateMachine->mayRelease($record->status)) {
+            throw new ValidationException(
+                'This checkout has a Prism payment being settled on-chain; it cannot be canceled right now.',
+            );
+        }
+
         // Not settled: drop any captured (but un-settled) credential before deferring the cancel to
         // the base. Otherwise the credential would linger on the now-canceled session and a later
         // complete would settle funds on-chain against a checkout that can no longer place an order
