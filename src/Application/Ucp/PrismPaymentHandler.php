@@ -15,11 +15,10 @@ use Ucp\Sdk\Model\RequestContext;
  * (`GET /.well-known/ucp` → `payment_handlers["xyz.fd.prism_payment"]`).
  *
  * The id/version and the spec/schema URLs are Prism's to declare — this handler does not invent
- * them, it re-advertises what Prism publishes at its public handlers endpoint. Resolving that
+ * them, it re-advertises what Prism publishes at its handlers endpoint. Resolving that
  * declaration (live-with-cache, static fallback) is delegated to {@see HandlerDeclarationProvider};
  * this class only maps it into the SDK descriptor and keeps the locally-owned registration id.
- * Discovery still needs no API key (the source endpoint is public) and never breaks (fallback). The
- * per-session, merchant-specific data (accepts) is sourced live by the requirements augmenter.
+ * The per-session, merchant-specific data (accepts) is sourced live by the requirements augmenter.
  *
  * @internal
  */
@@ -40,15 +39,15 @@ final readonly class PrismPaymentHandler implements PaymentHandlerInterface
 
     public function describe(RequestContext $context): PaymentHandlerDescriptor
     {
-        $declaration = $this->declarations->declaration();
+        $declaration = $this->declarations->declaration($context);
 
         return new PaymentHandlerDescriptor(
             id: $declaration->id,
             name: self::HANDLER_ID,
             version: $declaration->version,
             specUrl: $declaration->spec,
-            configSchema: $declaration->configSchema,
-            instrumentSchemas: $declaration->instrumentSchemas,
+            configSchema: $declaration->schema,
+            instrumentSchemas: [$declaration->instrumentSchema],
             config: [],
         );
     }

@@ -18,8 +18,10 @@ use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStat
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Ucp\Sdk\Adapter\CheckoutAdapterInterface;
+use Ucp\Sdk\Adapter\PaymentAwareCheckoutAdapterInterface;
 use Ucp\Sdk\Exception\ValidationException;
 use Ucp\Sdk\Model\Checkout\Checkout;
+use Ucp\Sdk\Model\Checkout\CheckoutCompleteRequest;
 use Ucp\Sdk\Model\Checkout\CheckoutCreateRequest;
 use Ucp\Sdk\Model\Checkout\CheckoutUpdateRequest;
 use Ucp\Sdk\Model\Checkout\PaymentInstrument;
@@ -39,11 +41,13 @@ use Ucp\Sdk\Model\RequestContext;
  *
  * @internal
  */
-final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
+final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapterInterface
 {
     // F4: cap the whole agent-supplied credential. A real x402 credential is ~1.5 KB; this is the
     // primary gate (clean 422 + truncation-proof) behind the VARCHAR(8192) column backstop.
     private const MAX_CREDENTIAL_BYTES = 8192;
+
+    private const X402_TYPE = 'x402';
 
 
     public function __construct(
@@ -94,11 +98,47 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
         return $this->inner->updateCheckout($request, $context);
     }
 
+    public function completeCheckoutFromRequest(CheckoutCompleteRequest $request, RequestContext $context): Checkout
+    {
+        $instrument = $this->prismInstrument($request->instruments);
+
+        if (null === $instrument) {
+            if ([] === $request->instruments) {
+                return $this->completeCheckout($request->id, $context);
+            }
+
+            $existing = $this->store->load($request->id);
+            if (null !== $existing && !$existing->isSettled()) {
+                if (!$this->stateMachine->mayCapture($existing->status)) {
+                    throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
+                }
+
+                $this->store->releaseToBase($request->id);
+            }
+
+            return $this->inner instanceof PaymentAwareCheckoutAdapterInterface
+                ? $this->inner->completeCheckoutFromRequest($request, $context)
+                : $this->inner->completeCheckout($request->id, $context);
+        }
+
+        $credential = $this->validateCredential($instrument);
+
+        $existing = $this->store->load($request->id);
+        if (null === $existing || !$existing->isSettled()) {
+            if (null !== $existing && !$this->stateMachine->mayCapture($existing->status)) {
+                throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
+            }
+
+            $this->store->capture($request->id, $credential);
+        }
+
+        return $this->completeCheckout($request->id, $context);
+    }
+
     public function completeCheckout(string $id, RequestContext $context): Checkout
     {
         $record = $this->store->load($id);
 
-        // Never engaged for this session — defer entirely to the base flow.
         if (null === $record) {
             return $this->inner->completeCheckout($id, $context);
         }
@@ -174,6 +214,12 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
         if (null !== $record && $record->isSettled()) {
             throw new ValidationException(
                 'This checkout has already been paid and settled on-chain; it cannot be canceled.',
+            );
+        }
+
+        if (null !== $record && !$this->stateMachine->mayRelease($record->status)) {
+            throw new ValidationException(
+                'This checkout has a Prism payment being settled on-chain; it cannot be canceled right now.',
             );
         }
 
@@ -293,6 +339,10 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
     {
         $credential = $payment->credential;
 
+        if (self::X402_TYPE !== $payment->type) {
+            throw new ValidationException('Prism payment instrument "type" must be "x402".');
+        }
+
         if ([] === $credential) {
             // L-1: a missing credential is the agent's input error — clean 422 (ValidationException)
             // rather than a bare RuntimeException that surfaces as a 500.
@@ -301,9 +351,24 @@ final readonly class PrismCheckoutAdapter implements CheckoutAdapterInterface
             );
         }
 
+        if (self::X402_TYPE !== ($credential['type'] ?? null)) {
+            throw new ValidationException('Prism payment credential "type" must be "x402".');
+        }
+
         $this->assertWithinSizeLimit($credential);
 
         return $credential;
+    }
+
+    private function prismInstrument(array $instruments): ?PaymentInstrument
+    {
+        foreach ($instruments as $instrument) {
+            if (PrismPaymentHandler::HANDLER_ID === $instrument->handlerId) {
+                return $instrument;
+            }
+        }
+
+        return null;
     }
 
     /**

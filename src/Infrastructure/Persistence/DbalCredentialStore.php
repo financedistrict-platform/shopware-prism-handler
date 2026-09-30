@@ -79,16 +79,15 @@ final class DbalCredentialStore implements CredentialStore
 
     public function releaseToBase(string $sessionId): void
     {
-        // Agent chose another payment method: drop any Prism credential and return to pending so
-        // complete defers to the base flow. Settled rows untouched.
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
              SET status = :pending, credential = NULL, updated_at = :now
-             WHERE checkout_session_id = :id AND status <> :settled',
+             WHERE checkout_session_id = :id AND status NOT IN (:settled, :settling)',
             [
                 'id' => $sessionId,
                 'pending' => SettlementStatus::PENDING,
                 'settled' => SettlementStatus::SETTLED,
+                'settling' => SettlementStatus::SETTLING,
                 'now' => $this->now(),
             ],
         );
