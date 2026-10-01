@@ -8,17 +8,33 @@ use Fd\PrismPayment\Core\Exception\PrismApiException;
 
 final class HandlerDeclarationParser
 {
-    private const INSTRUMENT_TYPE = 'x402';
+    private const INSTRUMENT_TYPE = InstrumentAcceptance::INSTRUMENT_TYPE;
 
     public static function schemaUrl(array $handlersBody, string $gatewayBaseUrl): string
     {
         return self::entry($handlersBody, $gatewayBaseUrl)['schema'];
     }
 
-    public static function parse(array $handlersBody, array $schemaDocument, string $gatewayBaseUrl): HandlerDeclaration
+    public static function declaredInstrumentSchema(array $handlersBody, string $gatewayBaseUrl): ?string
+    {
+        return self::entry($handlersBody, $gatewayBaseUrl)['instrumentSchema'];
+    }
+
+    public static function parse(array $handlersBody, ?array $schemaDocument, string $gatewayBaseUrl): HandlerDeclaration
     {
         $entry = self::entry($handlersBody, $gatewayBaseUrl);
 
+        return new HandlerDeclaration(
+            HandlerId::PRISM,
+            $entry['version'],
+            $entry['spec'],
+            $entry['schema'],
+            $entry['instrumentSchema'] ?? self::linkedInstrumentSchema($schemaDocument, $gatewayBaseUrl),
+        );
+    }
+
+    private static function linkedInstrumentSchema(?array $schemaDocument, string $gatewayBaseUrl): string
+    {
         $instrumentRef = $schemaDocument['$defs'][HandlerId::PRISM]['instrument']['$ref'] ?? null;
         if (!\is_string($instrumentRef) || '' === $instrumentRef) {
             throw new PrismApiException(sprintf(
@@ -28,15 +44,12 @@ final class HandlerDeclarationParser
         }
         self::assertSameOrigin($instrumentRef, $gatewayBaseUrl, 'instrument $ref');
 
-        return new HandlerDeclaration(
-            $entry['id'],
-            $entry['version'],
-            $entry['spec'],
-            $entry['schema'],
-            $instrumentRef,
-        );
+        return $instrumentRef;
     }
 
+    /**
+     * @return array{id: string, version: string, spec: string, schema: string, instrumentSchema: ?string}
+     */
     private static function entry(array $handlersBody, string $gatewayBaseUrl): array
     {
         $entry = $handlersBody[HandlerId::PRISM][0] ?? null;
@@ -45,23 +58,50 @@ final class HandlerDeclarationParser
         }
 
         $fields = [];
-        foreach (['id', 'version', 'spec', 'schema'] as $field) {
-            $value = $entry[$field] ?? null;
-            if (!\is_string($value) || '' === $value) {
-                throw new PrismApiException(sprintf('Prism handler entry field "%s" is missing or empty', $field));
-            }
-            $fields[$field] = $value;
+        foreach (['id', 'version', 'spec'] as $field) {
+            $fields[$field] = self::requiredString($entry[$field] ?? null, $field);
         }
+        $fields['schema'] = self::requiredString($entry['schema'] ?? $entry['config_schema'] ?? null, 'schema');
 
-        if (HandlerId::PRISM !== $fields['id']) {
+        if (!\in_array($fields['id'], HandlerId::ALL, true)) {
             throw new PrismApiException(sprintf(
-                'Prism handler entry "id" must be "%s", got "%s"',
-                HandlerId::PRISM,
+                'Prism handler entry "id" must be one of "%s", got "%s"',
+                implode('", "', HandlerId::ALL),
                 $fields['id'],
             ));
         }
 
-        $instruments = $entry['available_instruments'] ?? null;
+        if (\array_key_exists('available_instruments', $entry)) {
+            self::assertOffersX402($entry['available_instruments']);
+        }
+
+        self::assertSameOrigin($fields['spec'], $gatewayBaseUrl, 'spec');
+        self::assertSameOrigin($fields['schema'], $gatewayBaseUrl, 'schema');
+
+        $fields['instrumentSchema'] = null;
+        if (\array_key_exists('instrument_schemas', $entry)) {
+            $instrumentSchema = self::requiredString(
+                \is_array($entry['instrument_schemas']) ? ($entry['instrument_schemas'][0] ?? null) : null,
+                'instrument_schemas',
+            );
+            self::assertSameOrigin($instrumentSchema, $gatewayBaseUrl, 'instrument schema');
+            $fields['instrumentSchema'] = $instrumentSchema;
+        }
+
+        return $fields;
+    }
+
+    private static function requiredString(mixed $value, string $field): string
+    {
+        if (!\is_string($value) || '' === $value) {
+            throw new PrismApiException(sprintf('Prism handler entry field "%s" is missing or empty', $field));
+        }
+
+        return $value;
+    }
+
+    private static function assertOffersX402(mixed $instruments): void
+    {
         $hasX402 = \is_array($instruments) && [] !== array_filter(
             $instruments,
             static fn (mixed $i): bool => \is_array($i) && self::INSTRUMENT_TYPE === ($i['type'] ?? null),
@@ -72,11 +112,6 @@ final class HandlerDeclarationParser
                 self::INSTRUMENT_TYPE,
             ));
         }
-
-        self::assertSameOrigin($fields['spec'], $gatewayBaseUrl, 'spec');
-        self::assertSameOrigin($fields['schema'], $gatewayBaseUrl, 'schema');
-
-        return $fields;
     }
 
     private static function assertSameOrigin(string $url, string $gatewayBaseUrl, string $field): void

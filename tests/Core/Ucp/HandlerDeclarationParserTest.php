@@ -14,6 +14,8 @@ final class HandlerDeclarationParserTest extends TestCase
 {
     private const GATEWAY = 'https://prism-gw.fd.xyz';
 
+    private const RECORDED_GATEWAY = 'https://gw.example';
+
     private const HANDLERS_BODY = <<<'JSON'
         { "xyz.fd.prism_payment": [ {
             "id": "xyz.fd.prism_payment",
@@ -99,13 +101,97 @@ final class HandlerDeclarationParserTest extends TestCase
         HandlerDeclarationParser::parse([HandlerId::PRISM => []], self::schemaDocument(), self::GATEWAY);
     }
 
-    public function testThrowsWhenIdIsLegacyX402(): void
+    public function testMapsLegacyX402IdToCanonicalId(): void
     {
         $body = self::handlersBody();
         $body[HandlerId::PRISM][0]['id'] = 'x402';
 
+        $declaration = HandlerDeclarationParser::parse($body, self::schemaDocument(), self::GATEWAY);
+
+        self::assertSame(HandlerId::PRISM, $declaration->id);
+    }
+
+    public function testThrowsWhenIdIsUnknown(): void
+    {
+        $body = self::handlersBody();
+        $body[HandlerId::PRISM][0]['id'] = 'com.example.other';
+
         $this->expectException(PrismApiException::class);
         HandlerDeclarationParser::parse($body, self::schemaDocument(), self::GATEWAY);
+    }
+
+    public function testParsesRecordedLegacyResponse(): void
+    {
+        $body = self::fixture('legacy-handlers.json');
+
+        self::assertSame(
+            self::RECORDED_GATEWAY . '/ucp/instrument_schema.json',
+            HandlerDeclarationParser::declaredInstrumentSchema($body, self::RECORDED_GATEWAY),
+        );
+
+        $declaration = HandlerDeclarationParser::parse($body, null, self::RECORDED_GATEWAY);
+
+        self::assertSame(HandlerId::PRISM, $declaration->id);
+        self::assertSame('2026-01-15', $declaration->version);
+        self::assertSame(self::RECORDED_GATEWAY . '/ucp/prism.md', $declaration->spec);
+        self::assertSame(self::RECORDED_GATEWAY . '/ucp/schema.json', $declaration->schema);
+        self::assertSame(self::RECORDED_GATEWAY . '/ucp/instrument_schema.json', $declaration->instrumentSchema);
+    }
+
+    public function testParsesRecordedCurrentResponseWithoutAvailableInstruments(): void
+    {
+        $body = self::fixture('current-handlers-2026-01-23.json');
+        self::assertArrayNotHasKey('available_instruments', $body[HandlerId::PRISM][0]);
+
+        $declaration = HandlerDeclarationParser::parse($body, null, self::RECORDED_GATEWAY);
+
+        self::assertSame(HandlerId::PRISM, $declaration->id);
+        self::assertSame($body[HandlerId::PRISM][0]['version'], $declaration->version);
+        self::assertSame($body[HandlerId::PRISM][0]['spec'], $declaration->spec);
+        self::assertSame($body[HandlerId::PRISM][0]['schema'], $declaration->schema);
+        self::assertSame($body[HandlerId::PRISM][0]['instrument_schemas'][0], $declaration->instrumentSchema);
+    }
+
+    public function testSchemaFallsBackToConfigSchema(): void
+    {
+        $body = self::handlersBody();
+        unset($body[HandlerId::PRISM][0]['schema']);
+        $body[HandlerId::PRISM][0]['config_schema'] = self::GATEWAY . '/ucp/legacy-schema.json';
+
+        self::assertSame(
+            self::GATEWAY . '/ucp/legacy-schema.json',
+            HandlerDeclarationParser::schemaUrl($body, self::GATEWAY),
+        );
+    }
+
+    public function testDeclaredInstrumentSchemaIsNullWithoutInstrumentSchemas(): void
+    {
+        self::assertNull(HandlerDeclarationParser::declaredInstrumentSchema(self::handlersBody(), self::GATEWAY));
+    }
+
+    public function testThrowsWhenNoInstrumentSchemaIsDeclaredOrLinked(): void
+    {
+        $this->expectException(PrismApiException::class);
+        HandlerDeclarationParser::parse(self::handlersBody(), null, self::GATEWAY);
+    }
+
+    public function testThrowsWhenInstrumentSchemasIsEmpty(): void
+    {
+        $body = self::handlersBody();
+        $body[HandlerId::PRISM][0]['instrument_schemas'] = [];
+
+        $this->expectException(PrismApiException::class);
+        HandlerDeclarationParser::parse($body, self::schemaDocument(), self::GATEWAY);
+    }
+
+    #[DataProvider('foreignUrls')]
+    public function testThrowsWhenDeclaredInstrumentSchemaIsForeign(string $url): void
+    {
+        $body = self::handlersBody();
+        $body[HandlerId::PRISM][0]['instrument_schemas'] = [$url];
+
+        $this->expectException(PrismApiException::class);
+        HandlerDeclarationParser::parse($body, null, self::GATEWAY);
     }
 
     public function testThrowsWhenNoX402AvailableInstrument(): void
@@ -117,10 +203,20 @@ final class HandlerDeclarationParserTest extends TestCase
         HandlerDeclarationParser::parse($body, self::schemaDocument(), self::GATEWAY);
     }
 
-    public function testThrowsWhenAvailableInstrumentsMissing(): void
+    public function testAcceptsMissingAvailableInstruments(): void
     {
         $body = self::handlersBody();
         unset($body[HandlerId::PRISM][0]['available_instruments']);
+
+        $declaration = HandlerDeclarationParser::parse($body, self::schemaDocument(), self::GATEWAY);
+
+        self::assertSame(HandlerId::PRISM, $declaration->id);
+    }
+
+    public function testThrowsWhenAvailableInstrumentsIsNotAList(): void
+    {
+        $body = self::handlersBody();
+        $body[HandlerId::PRISM][0]['available_instruments'] = 'x402';
 
         $this->expectException(PrismApiException::class);
         HandlerDeclarationParser::parse($body, self::schemaDocument(), self::GATEWAY);
@@ -195,5 +291,13 @@ final class HandlerDeclarationParserTest extends TestCase
     private static function schemaDocument(): array
     {
         return json_decode(self::SCHEMA_DOCUMENT, true, 512, \JSON_THROW_ON_ERROR);
+    }
+
+    private static function fixture(string $name): array
+    {
+        $raw = file_get_contents(__DIR__ . '/../../fixtures/prism/' . $name);
+        self::assertIsString($raw);
+
+        return json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
     }
 }

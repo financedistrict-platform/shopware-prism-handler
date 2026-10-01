@@ -9,9 +9,11 @@ use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
 use Fd\PrismPayment\Core\Ucp\HandlerDeclaration;
 use Fd\PrismPayment\Core\Ucp\HandlerId;
+use Fd\PrismPayment\Core\Ucp\ServedVersion;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
+use Ucp\Sdk\Model\Config\RuntimeConfiguration;
 use Ucp\Sdk\Model\RequestContext;
 
 /**
@@ -43,7 +45,11 @@ final class HandlerDeclarationProvider
     // the right environment (the same Prism the settle path uses).
     private const FALLBACK_VERSION = '2026-10-07';
 
+    private const DEFAULT_VERSION_KEY = 'default';
+
     private ?HandlerDeclaration $memo = null;
+
+    private ?string $memoKey = null;
 
     public function __construct(
         private readonly ConfigResolver $configResolver,
@@ -51,35 +57,42 @@ final class HandlerDeclarationProvider
         private readonly HandlerDeclarationSource $source,
         private readonly CacheInterface $cache,
         private readonly LoggerInterface $logger,
+        private readonly ?RuntimeConfiguration $runtimeConfiguration = null,
     ) {
     }
 
     public function declaration(RequestContext $context): HandlerDeclaration
     {
-        if (null !== $this->memo) {
+        $servedVersion = ServedVersion::resolve(
+            $context->runtimeConfiguration?->version,
+            $this->runtimeConfiguration?->version,
+        );
+        $gateway = rtrim($this->configResolver->gatewayUrl(), '/');
+        $key = 'fd_prism.handler_declaration.' . hash('xxh128', $gateway . '|' . ($servedVersion ?? self::DEFAULT_VERSION_KEY));
+
+        if (null !== $this->memo && $key === $this->memoKey) {
             return $this->memo;
         }
 
-        $gateway = rtrim($this->configResolver->gatewayUrl(), '/');
-        $key = 'fd_prism.handler_declaration.' . hash('xxh128', $gateway);
-
-        $declaration = $this->cache->get($key, function (ItemInterface $item) use ($gateway, $context): HandlerDeclaration {
+        $declaration = $this->cache->get($key, function (ItemInterface $item) use ($gateway, $context, $servedVersion): HandlerDeclaration {
             try {
                 $salesChannelId = $this->salesChannelResolver->resolve($context);
-                $live = $this->source->fetch($this->configResolver->resolve($salesChannelId));
+                $live = $this->source->fetch($this->configResolver->resolve($salesChannelId), $servedVersion);
                 $item->expiresAfter(self::TTL_OK_SECONDS);
 
                 return $live;
             } catch (\Throwable $e) {
                 $this->logger->warning(
                     'Prism handler declaration fetch failed; serving static fallback for discovery.',
-                    ['exception' => $e, 'gateway' => $gateway],
+                    ['exception' => $e, 'gateway' => $gateway, 'ucp_version' => $servedVersion],
                 );
                 $item->expiresAfter(self::TTL_FALLBACK_SECONDS);
 
                 return $this->fallback($gateway);
             }
         });
+
+        $this->memoKey = $key;
 
         return $this->memo = $declaration;
     }

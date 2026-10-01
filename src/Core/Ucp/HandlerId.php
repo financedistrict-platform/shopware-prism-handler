@@ -14,4 +14,8 @@ namespace Fd\PrismPayment\Core\Ucp;
 final class HandlerId
 {
     public const PRISM = 'xyz.fd.prism_payment';
+
+    public const LEGACY = 'x402';
+
+    public const ALL = [self::PRISM, self::LEGACY];
 }
