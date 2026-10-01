@@ -1,3 +1,29 @@
+# 0.7.0
+Runs on SwagAgenticCommerce 1.2.x (ucp-php-sdk 0.0.5, UCP 2026-04-08) and 1.3.x (ucp-php-sdk 0.0.7,
+UCP 2026-08-25). Minor release: nothing removed or renamed.
+
+- **Base range restored.** Requires `shopware/agentic-commerce >=1.0.0 <2.0.0` again. The handler only
+  uses SDK classes present in both 0.0.5 and 0.0.7; `scripts/check-sdk-compat.sh` proves it against the
+  SDK tags (`SDK=<ucp-php-sdk checkout> bash scripts/check-sdk-compat.sh`).
+- **Versioned handler fetch.** Discovery calls `GET /api/v2/merchant/ucp/handlers?ucp_version=<served>`,
+  so Prism answers in the UCP version the store serves. The cache key is per gateway and version.
+- **Served version on discovery.** `/.well-known/ucp` carries no runtime configuration in the request
+  context, so the handler falls back to the SDK's `RuntimeConfiguration` service (`ucp_sdk.version`).
+  With neither, the query is omitted and Prism uses its default.
+- **User-Agent.** Every Prism call (handlers, schema, payment-requirements, settle) sends
+  `User-Agent: fd-shopware-prism/<plugin version>`.
+- **Legacy handler entry accepted.** Prism's older entry (`id` `x402`, `config_schema`,
+  `instrument_schemas`) maps to the canonical `xyz.fd.prism_payment` declaration. `available_instruments`
+  is optional (2026-01-23 and legacy entries have none); when present it must still offer `x402`. The
+  instrument schema comes from `instrument_schemas[0]` when Prism declares it, else from the schema document.
+- **Original instruments complete again.** The checkout accepts `handler_id` `xyz.fd.prism_payment` or
+  `x402`, instrument `type` `x402`, `tokenized`, `default` or absent, and a credential with `type` `x402`
+  or no `type`. Other values still get a 422. Settlement, quote binding and once-only settle are unchanged.
+- **UCP 2026-04-08 and 2026-01-23 on SwagAgenticCommerce 1.3.** Install the companion plugin
+  `fd-shopware-ucp-compat` 0.1.0; it serves those versions in front of stock SwagAgenticCommerce 1.3.
+- **Upgrade path 1.2 → 1.3.** Upgrade SwagAgenticCommerce to 1.3, keep this handler 0.7.0, and install
+  `fd-shopware-ucp-compat` if agents still use 2026-04-08 or 2026-01-23.
+
 # 0.6.0
 Move to UCP 2026-08-25 via SwagAgenticCommerce 1.3.0 / ucp-php-sdk 0.0.7. Requires
 `shopware/agentic-commerce >=1.3.0`.
