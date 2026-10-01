@@ -25,7 +25,10 @@ final readonly class RequestSalesChannelResolver
     {
         $baseUri = $context->runtimeConfiguration?->baseUri;
         if (null === $baseUri || '' === $baseUri) {
-            $baseUri = 'https://' . $context->host;
+            $host = $context->host;
+            $baseUri = str_starts_with($host, 'http://') || str_starts_with($host, 'https://')
+                ? $host
+                : 'https://' . $host;
         }
 
         $resolution = $this->domainResolver->resolveByBaseUri($baseUri);

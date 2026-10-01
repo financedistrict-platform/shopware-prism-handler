@@ -33,7 +33,7 @@ interface CredentialStore
     /**
      * Release our claim on a session because the agent selected a DIFFERENT payment method: clear
      * any captured credential and return the row to `pending` so complete defers to the base flow.
-     * We only answer to the Prism handler. No-op on a settled row (F0).
+     * We only answer to the Prism handler. No-op on a settled or settling row (F0).
      */
     public function releaseToBase(string $sessionId): void;
 

@@ -29,7 +29,7 @@ any storefront or admin UI work.
 | **On-chain receipt** | Marks the order transaction paid and writes the on-chain transaction reference + block-explorer link to the order |
 | **Zero UI** | No admin/storefront JS; settlement is out-of-band during the UCP flow |
 | **Currency- & chain-agnostic** | Prism does all token/chain/x402 math — the plugin only relays |
-| **Per-sales-channel config** | One Prism API key per sales channel, plus an env-driven developer mode |
+| **Per-sales-channel config** | Prism gateway URL + one API key per sales channel, set in the plugin's admin config |
 
 ## Documentation
 

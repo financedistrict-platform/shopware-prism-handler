@@ -1,3 +1,33 @@
+# 0.6.0
+Move to UCP 2026-08-25 via SwagAgenticCommerce 1.3.0 / ucp-php-sdk 0.0.7. Requires
+`shopware/agentic-commerce >=1.3.0`.
+
+- **Handler id `xyz.fd.prism_payment`.** The advertised handler `id` now equals the instrument
+  `handler_id` (was `x402`); the built-in fallback declares version `2026-10-07`.
+- **Discovery fetch sends `X-API-Key`.** The handlers fetch uses the sales channel's Prism API key, follows
+  no redirects, and only accepts `https` URLs on the gateway host. Any failure (unresolved sales channel,
+  missing key, fetch or shape error) still falls back to the static declaration, so discovery never breaks.
+- **Descriptor mapped from Prism's new entry.** `config_schema` is Prism's `schema` URL; `instrument_schemas`
+  is the instrument schema linked from that document at `$defs["xyz.fd.prism_payment"].instrument`.
+- **Payment accepted on complete.** The checkout adapter implements `PaymentAwareCheckoutAdapterInterface`,
+  so the Prism instrument sent in `payment.instruments` on complete is captured and settled once. Sending
+  it on update still works.
+- **Instrument and credential `type` must be `x402`.** Other values (including the SDK default `tokenized`
+  for a missing instrument `type`) are rejected with a 422 before anything is stored or settled.
+- **Known limitation.** A missing instrument `id` cannot be detected (the SDK model has no `id`).
+
+# 0.5.0
+Drop the environment-variable config path. The gateway URL and API key now come **only** from the
+plugin's admin config fields (system_config); the `DEVELOPER_MODE` / `PRISM_URL` / `PRISM_API_KEY`
+env override has been removed.
+
+- **`DEVELOPER_MODE` no longer exists.** Previously, `DEVELOPER_MODE=true` made the resolver ignore
+  both admin fields and read the gateway/key from the `PRISM_URL` / `PRISM_API_KEY` env vars. That
+  branch is gone — `resolve()` and `gatewayUrl()` always read system_config. To point a store at the
+  test gateway, set the **Prism Gateway** field; per-sales-channel keys go in **Prism API key**.
+- **Migration.** Any deployment (test/ECS, local lab) that relied on the env vars must now set the two
+  admin config fields instead. The gateway field still defaults to `https://prism-gw.fd.xyz` when unset.
+
 # 0.4.0
 Source the handler declaration live from Prism instead of hardcoding it, so Prism can evolve the
 handler id/version and the contract schema URLs without a plugin redeploy or a store update. The

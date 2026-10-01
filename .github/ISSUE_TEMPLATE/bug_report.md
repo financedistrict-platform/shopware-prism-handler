@@ -20,7 +20,7 @@ What you expected to happen instead.
 - **PHP version:** (≥ 8.2)
 - **Plugin version:** (from `composer.json` / Extensions list)
 - **Base extension `shopware/agentic-commerce` installed *and active*?** yes / no
-- **Developer mode?** (`DEVELOPER_MODE=true` with env-based config) yes / no
+- **Prism gateway URL:** (from the plugin's admin config; default `https://prism-gw.fd.xyz`)
 
 ## Reproduction
 
