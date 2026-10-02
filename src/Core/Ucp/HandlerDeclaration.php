@@ -14,4 +14,17 @@ final readonly class HandlerDeclaration
         public string $instrumentSchema,
     ) {
     }
+
+    public static function forGateway(string $gateway, string $declaredVersion, string $servedVersion): self
+    {
+        $base = rtrim($gateway, '/') . '/ucp/' . $servedVersion;
+
+        return new self(
+            id: HandlerId::PRISM,
+            version: $declaredVersion,
+            spec: $base . '/prism.md',
+            schema: $base . '/schema.json',
+            instrumentSchema: $base . '/instrument_schema.json',
+        );
+    }
 }

@@ -60,8 +60,8 @@ present and active before you install this one.
 | 1.2.x | 0.0.5 | 2026-04-08 | Works as is. |
 | 1.3.x | 0.0.7 | 2026-08-25 | Works as is. |
 
-The handler follows the version the store serves: it asks Prism for that version
-(`?ucp_version=`) and sends `User-Agent: fd-shopware-prism/<version>` on every Prism call. Agents
+The handler follows the version the store serves: it tells Prism that version
+through `User-Agent: fd-shopware-prism/<ucp-version>` on every Prism call. Agents
 that still send original-era instruments (`handler_id` `x402`, `type` `tokenized` or missing) can
 still pay.
 

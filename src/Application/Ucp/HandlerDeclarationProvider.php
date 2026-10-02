@@ -8,12 +8,9 @@ use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
 use Fd\PrismPayment\Core\Ucp\HandlerDeclaration;
-use Fd\PrismPayment\Core\Ucp\HandlerId;
-use Fd\PrismPayment\Core\Ucp\ServedVersion;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
-use Ucp\Sdk\Model\Config\RuntimeConfiguration;
 use Ucp\Sdk\Model\RequestContext;
 
 /**
@@ -45,8 +42,6 @@ final class HandlerDeclarationProvider
     // the right environment (the same Prism the settle path uses).
     private const FALLBACK_VERSION = '2026-10-07';
 
-    private const DEFAULT_VERSION_KEY = 'default';
-
     private ?HandlerDeclaration $memo = null;
 
     private ?string $memoKey = null;
@@ -57,18 +52,15 @@ final class HandlerDeclarationProvider
         private readonly HandlerDeclarationSource $source,
         private readonly CacheInterface $cache,
         private readonly LoggerInterface $logger,
-        private readonly ?RuntimeConfiguration $runtimeConfiguration = null,
+        private readonly UcpVersionResolver $versionResolver,
     ) {
     }
 
     public function declaration(RequestContext $context): HandlerDeclaration
     {
-        $servedVersion = ServedVersion::resolve(
-            $context->runtimeConfiguration?->version,
-            $this->runtimeConfiguration?->version,
-        );
+        $servedVersion = $this->versionResolver->resolve($context);
         $gateway = rtrim($this->configResolver->gatewayUrl(), '/');
-        $key = 'fd_prism.handler_declaration.' . hash('xxh128', $gateway . '|' . ($servedVersion ?? self::DEFAULT_VERSION_KEY));
+        $key = 'fd_prism.handler_declaration.' . hash('xxh128', $gateway . '|' . $servedVersion);
 
         if (null !== $this->memo && $key === $this->memoKey) {
             return $this->memo;
@@ -88,23 +80,12 @@ final class HandlerDeclarationProvider
                 );
                 $item->expiresAfter(self::TTL_FALLBACK_SECONDS);
 
-                return $this->fallback($gateway);
+                return HandlerDeclaration::forGateway($gateway, self::FALLBACK_VERSION, $servedVersion);
             }
         });
 
         $this->memoKey = $key;
 
         return $this->memo = $declaration;
-    }
-
-    private function fallback(string $gateway): HandlerDeclaration
-    {
-        return new HandlerDeclaration(
-            id: HandlerId::PRISM,
-            version: self::FALLBACK_VERSION,
-            spec: $gateway . '/ucp/prism.md',
-            schema: $gateway . '/ucp/schema.json',
-            instrumentSchema: $gateway . '/ucp/instrument_schema.json',
-        );
     }
 }

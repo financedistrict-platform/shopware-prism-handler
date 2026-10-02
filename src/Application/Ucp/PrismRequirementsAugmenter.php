@@ -36,6 +36,7 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         private RequestSalesChannelResolver $salesChannelResolver,
         private CredentialStore $credentialStore,
         private LoggerInterface $logger,
+        private UcpVersionResolver $versionResolver,
     ) {
     }
 
@@ -83,10 +84,12 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
             $resourceUrl = $checkout->continueUrl ?? $this->sessionUrl($context, $checkout->id);
 
             $prismConfig = $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
+            $ucpVersion = $this->versionResolver->resolve($context);
 
             try {
                 $entry = $this->client->paymentRequirements(
                     $prismConfig,
+                    $ucpVersion,
                     $fiatAmount,
                     $currency,
                     $resourceUrl,

@@ -60,6 +60,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         private Connection $connection,
         private SettlementStateMachine $stateMachine,
         private AcceptsMatcher $acceptsMatcher,
+        private UcpVersionResolver $versionResolver,
     ) {
     }
 
@@ -239,7 +240,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         \assert(null !== $record->credential);
 
         $config = $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
-        $result = $this->client->settle($config, $record->credential);
+        $result = $this->client->settle($config, $this->versionResolver->resolve($context), $record->credential);
 
         if (!$result->success) {
             $this->store->markFailed($sessionId);
