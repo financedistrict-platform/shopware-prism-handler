@@ -22,6 +22,8 @@ spl_autoload_register(static function (string $class): void {
     $prefixes = [
         'Fd\\PrismPayment\\Tests\\' => __DIR__ . '/',
         'Fd\\PrismPayment\\' => __DIR__ . '/../src/',
+        'Ucp\\Sdk\\' => __DIR__ . '/Support/Ucp/Sdk/',
+        'Shopware\\Core\\' => __DIR__ . '/Support/Shopware/Core/',
         'Doctrine\\DBAL\\' => __DIR__ . '/Support/Doctrine/DBAL/',
         'Symfony\\Contracts\\HttpClient\\' => __DIR__ . '/Support/Symfony/HttpClient/',
     ];
