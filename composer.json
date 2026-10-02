@@ -3,7 +3,7 @@
   "description": "UCP Prism/x402 payment handler for Shopware (Agentic Commerce)",
   "type": "shopware-platform-plugin",
   "license": "MIT",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "autoload": {
     "psr-4": {
       "Fd\\PrismPayment\\": "src/"
@@ -17,7 +17,7 @@
   "require": {
     "php": "^8.2",
     "shopware/core": ">=6.7.10.0 <7.0.0.0",
-    "shopware/agentic-commerce": ">=1.3.0 <2.0.0"
+    "shopware/agentic-commerce": ">=1.0.0 <2.0.0"
   },
   "require-dev": {
     "phpunit/phpunit": "^11.5"

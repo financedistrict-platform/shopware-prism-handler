@@ -13,6 +13,7 @@ use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
 use Fd\PrismPayment\Core\Settlement\SettlementStateMachine;
+use Fd\PrismPayment\Core\Ucp\InstrumentAcceptance;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStateHandler;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStates;
 use Shopware\Core\Framework\Context;
@@ -47,8 +48,6 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     // primary gate (clean 422 + truncation-proof) behind the VARCHAR(8192) column backstop.
     private const MAX_CREDENTIAL_BYTES = 8192;
 
-    private const X402_TYPE = 'x402';
-
 
     public function __construct(
         private CheckoutAdapterInterface $inner,
@@ -77,7 +76,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     public function updateCheckout(CheckoutUpdateRequest $request, RequestContext $context): Checkout
     {
         $payment = $request->payment;
-        if (null !== $payment && PrismPaymentHandler::HANDLER_ID === $payment->handlerId) {
+        if (null !== $payment && InstrumentAcceptance::isPrismHandler($payment->handlerId)) {
             // F0: refuse to (re)capture against a settled OR mid-settle (`settling`) session. A clean
             // 422 to the agent instead of silently reverting a paid/in-flight settle back to pending
             // (which would let a second complete re-claim and settle again). capture()'s SQL is also
@@ -339,8 +338,8 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     {
         $credential = $payment->credential;
 
-        if (self::X402_TYPE !== $payment->type) {
-            throw new ValidationException('Prism payment instrument "type" must be "x402".');
+        if (!InstrumentAcceptance::acceptsInstrumentType($payment->type)) {
+            throw new ValidationException('Prism payment instrument "type" must be "x402" (or "tokenized", "default", or absent).');
         }
 
         if ([] === $credential) {
@@ -351,8 +350,8 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             );
         }
 
-        if (self::X402_TYPE !== ($credential['type'] ?? null)) {
-            throw new ValidationException('Prism payment credential "type" must be "x402".');
+        if (!InstrumentAcceptance::acceptsCredentialType($credential['type'] ?? null)) {
+            throw new ValidationException('Prism payment credential "type" must be "x402" when present.');
         }
 
         $this->assertWithinSizeLimit($credential);
@@ -363,7 +362,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     private function prismInstrument(array $instruments): ?PaymentInstrument
     {
         foreach ($instruments as $instrument) {
-            if (PrismPaymentHandler::HANDLER_ID === $instrument->handlerId) {
+            if (InstrumentAcceptance::isPrismHandler($instrument->handlerId)) {
                 return $instrument;
             }
         }

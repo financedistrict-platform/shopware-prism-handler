@@ -18,6 +18,7 @@ use Fd\PrismPayment\Infrastructure\Http\PrismHttpClient;
 use Fd\PrismPayment\Infrastructure\Persistence\DbalCredentialStore;
 use Fd\PrismPayment\Infrastructure\Persistence\DbalSettlementReadModel;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Ucp\Sdk\Model\Config\RuntimeConfiguration;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
@@ -54,7 +55,8 @@ return static function (ContainerConfigurator $container): void {
     // Discovery declaration is fetched live from Prism and cached in that pool (see the provider).
     $services->set(HandlerDeclarationProvider::class)
         ->autowire()
-        ->arg('$cache', service('fd_prism.cache'));
+        ->arg('$cache', service('fd_prism.cache'))
+        ->arg('$runtimeConfiguration', service(RuntimeConfiguration::class)->nullOnInvalid());
 
     // The Shopware payment method handler is resolved by the core via this tag (service id
     // == handlerIdentifier). No marker interface exists for autoconfigure, so tag explicitly.

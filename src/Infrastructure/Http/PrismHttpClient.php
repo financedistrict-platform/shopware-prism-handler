@@ -9,6 +9,7 @@ use Fd\PrismPayment\Core\Payment\PrismConfig;
 use Fd\PrismPayment\Core\Payment\PrismResponseParser;
 use Fd\PrismPayment\Core\Payment\SettleResult;
 use Fd\PrismPayment\Core\Port\PrismGateway;
+use Fd\PrismPayment\Core\Ucp\PluginVersion;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -88,7 +89,11 @@ final readonly class PrismHttpClient implements PrismGateway
     private function send(PrismConfig $config, string $method, string $path, ?array $body, float $timeout): array
     {
         $options = [
-            'headers' => ['X-API-Key' => $config->apiKey, 'Accept' => 'application/json'],
+            'headers' => [
+                'X-API-Key' => $config->apiKey,
+                'Accept' => 'application/json',
+                'User-Agent' => PluginVersion::userAgent(),
+            ],
             'timeout' => $timeout,
         ];
         if (null !== $body) {
