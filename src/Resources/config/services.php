@@ -53,10 +53,10 @@ return static function (ContainerConfigurator $container): void {
         ->parent('cache.app')
         ->tag('cache.pool');
 
-    // Discovery declaration is fetched live from Prism and cached in that pool (see the provider).
     $services->set(UcpVersionResolver::class)
         ->arg('$runtimeConfiguration', service(RuntimeConfiguration::class)->nullOnInvalid());
 
+    // Discovery declaration is fetched live from Prism and cached in that pool (see the provider).
     $services->set(HandlerDeclarationProvider::class)
         ->autowire()
         ->arg('$cache', service('fd_prism.cache'));
