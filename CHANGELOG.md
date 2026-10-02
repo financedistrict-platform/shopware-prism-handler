@@ -19,10 +19,9 @@ UCP 2026-08-25). Minor release: nothing removed or renamed.
 - **Original instruments complete again.** The checkout accepts `handler_id` `xyz.fd.prism_payment` or
   `x402`, instrument `type` `x402`, `tokenized`, `default` or absent, and a credential with `type` `x402`
   or no `type`. Other values still get a 422. Settlement, quote binding and once-only settle are unchanged.
-- **UCP 2026-04-08 and 2026-01-23 on SwagAgenticCommerce 1.3.** Install the companion plugin
-  `fd-shopware-ucp-compat` 0.1.0; it serves those versions in front of stock SwagAgenticCommerce 1.3.
-- **Upgrade path 1.2 → 1.3.** Upgrade SwagAgenticCommerce to 1.3, keep this handler 0.7.0, and install
-  `fd-shopware-ucp-compat` if agents still use 2026-04-08 or 2026-01-23.
+- **SwagAgenticCommerce 1.2 and 1.3.** The handler follows the UCP version the store serves: 2026-04-08
+  on SwagAgenticCommerce 1.2, 2026-08-25 on 1.3. Upgrade path 1.2 → 1.3: upgrade SwagAgenticCommerce and
+  keep this handler. Shopware serves one UCP version per SwagAgenticCommerce release.
 
 # 0.6.0
 Move to UCP 2026-08-25 via SwagAgenticCommerce 1.3.0 / ucp-php-sdk 0.0.7. Requires
