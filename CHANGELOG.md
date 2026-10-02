@@ -1,3 +1,15 @@
+# 0.7.1
+Patch release: the Prism User-Agent now names the UCP version. Needs Prism with the
+`fd-<platform>-prism/<ucp-version>` contract selection (fd-prism-services#149).
+
+- **User-Agent carries the UCP version.** Every Prism call (handlers, schema, payment-requirements,
+  settle) sends `User-Agent: fd-shopware-prism/<ucp-version>`, for example `fd-shopware-prism/2026-08-25`.
+  It used to carry the plugin version, which Prism never recognised.
+- **No `?ucp_version=` query.** Discovery calls `GET /api/v2/merchant/ucp/handlers` bare; Prism reads
+  the version from the User-Agent. Unsupported versions answer 422.
+- **One version rule.** Discovery, payment-requirements and settle all resolve the version the same
+  way: the request's runtime configuration, then the SDK `RuntimeConfiguration` service.
+
 # 0.7.0
 Runs on SwagAgenticCommerce 1.2.x (ucp-php-sdk 0.0.5, UCP 2026-04-08) and 1.3.x (ucp-php-sdk 0.0.7,
 UCP 2026-08-25). Minor release: nothing removed or renamed.

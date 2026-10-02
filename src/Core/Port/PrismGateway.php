@@ -23,6 +23,7 @@ interface PrismGateway
      */
     public function paymentRequirements(
         PrismConfig $config,
+        string $ucpVersion,
         string $amount,
         string $currency,
         string $resourceUrl,
@@ -35,5 +36,5 @@ interface PrismGateway
      *
      * @param array<string, mixed> $credential
      */
-    public function settle(PrismConfig $config, array $credential): SettleResult;
+    public function settle(PrismConfig $config, string $ucpVersion, array $credential): SettleResult;
 }

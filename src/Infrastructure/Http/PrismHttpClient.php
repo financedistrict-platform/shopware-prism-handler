@@ -9,7 +9,7 @@ use Fd\PrismPayment\Core\Payment\PrismConfig;
 use Fd\PrismPayment\Core\Payment\PrismResponseParser;
 use Fd\PrismPayment\Core\Payment\SettleResult;
 use Fd\PrismPayment\Core\Port\PrismGateway;
-use Fd\PrismPayment\Core\Ucp\PluginVersion;
+use Fd\PrismPayment\Core\Ucp\PrismUserAgent;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -42,6 +42,7 @@ final readonly class PrismHttpClient implements PrismGateway
 
     public function paymentRequirements(
         PrismConfig $config,
+        string $ucpVersion,
         string $amount,
         string $currency,
         string $resourceUrl,
@@ -52,7 +53,7 @@ final readonly class PrismHttpClient implements PrismGateway
             $resource['description'] = $resourceDescription;
         }
 
-        $data = $this->post($config, self::PAYMENT_REQUIREMENTS_PATH, [
+        $data = $this->post($config, $ucpVersion, self::PAYMENT_REQUIREMENTS_PATH, [
             'amount' => $amount,
             'currency' => $currency,
             'resource' => $resource,
@@ -61,12 +62,12 @@ final readonly class PrismHttpClient implements PrismGateway
         return $this->parser->paymentRequirementsEntry($data);
     }
 
-    public function settle(PrismConfig $config, array $credential): SettleResult
+    public function settle(PrismConfig $config, string $ucpVersion, array $credential): SettleResult
     {
         // Forward the wallet's whole signed x402 credential verbatim. It already carries the
         // {paymentPayload, paymentRequirements} Prism's /settle reads; we neither unwrap nor
         // reshape it (that x402 knowledge lives in Prism, not this relay).
-        $data = $this->post($config, self::SETTLE_PATH, $credential, self::SETTLE_TIMEOUT_SECONDS);
+        $data = $this->post($config, $ucpVersion, self::SETTLE_PATH, $credential, self::SETTLE_TIMEOUT_SECONDS);
 
         return $this->parser->settleResult($data);
     }
@@ -76,9 +77,9 @@ final readonly class PrismHttpClient implements PrismGateway
      *
      * @return array<string, mixed>
      */
-    private function post(PrismConfig $config, string $path, array $body, float $timeout): array
+    private function post(PrismConfig $config, string $ucpVersion, string $path, array $body, float $timeout): array
     {
-        return $this->send($config, 'POST', $path, $body, $timeout);
+        return $this->send($config, $ucpVersion, 'POST', $path, $body, $timeout);
     }
 
     /**
@@ -86,13 +87,13 @@ final readonly class PrismHttpClient implements PrismGateway
      *
      * @return array<string, mixed>
      */
-    private function send(PrismConfig $config, string $method, string $path, ?array $body, float $timeout): array
+    private function send(PrismConfig $config, string $ucpVersion, string $method, string $path, ?array $body, float $timeout): array
     {
         $options = [
             'headers' => [
                 'X-API-Key' => $config->apiKey,
                 'Accept' => 'application/json',
-                'User-Agent' => PluginVersion::userAgent(),
+                'User-Agent' => PrismUserAgent::forUcpVersion($ucpVersion),
             ],
             'timeout' => $timeout,
         ];

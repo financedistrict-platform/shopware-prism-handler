@@ -7,6 +7,7 @@ namespace Fd\PrismPayment\DependencyInjection;
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
 use Fd\PrismPayment\Application\Ucp\HandlerDeclarationProvider;
 use Fd\PrismPayment\Application\Ucp\PrismCheckoutAdapter;
+use Fd\PrismPayment\Application\Ucp\UcpVersionResolver;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
@@ -53,10 +54,12 @@ return static function (ContainerConfigurator $container): void {
         ->tag('cache.pool');
 
     // Discovery declaration is fetched live from Prism and cached in that pool (see the provider).
+    $services->set(UcpVersionResolver::class)
+        ->arg('$runtimeConfiguration', service(RuntimeConfiguration::class)->nullOnInvalid());
+
     $services->set(HandlerDeclarationProvider::class)
         ->autowire()
-        ->arg('$cache', service('fd_prism.cache'))
-        ->arg('$runtimeConfiguration', service(RuntimeConfiguration::class)->nullOnInvalid());
+        ->arg('$cache', service('fd_prism.cache'));
 
     // The Shopware payment method handler is resolved by the core via this tag (service id
     // == handlerIdentifier). No marker interface exists for autoconfigure, so tag explicitly.
