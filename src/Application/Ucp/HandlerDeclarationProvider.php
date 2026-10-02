@@ -8,7 +8,6 @@ use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
 use Fd\PrismPayment\Core\Ucp\HandlerDeclaration;
-use Fd\PrismPayment\Core\Ucp\HandlerId;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
@@ -81,23 +80,12 @@ final class HandlerDeclarationProvider
                 );
                 $item->expiresAfter(self::TTL_FALLBACK_SECONDS);
 
-                return $this->fallback($gateway);
+                return HandlerDeclaration::forGateway($gateway, self::FALLBACK_VERSION, $servedVersion);
             }
         });
 
         $this->memoKey = $key;
 
         return $this->memo = $declaration;
-    }
-
-    private function fallback(string $gateway): HandlerDeclaration
-    {
-        return new HandlerDeclaration(
-            id: HandlerId::PRISM,
-            version: self::FALLBACK_VERSION,
-            spec: $gateway . '/ucp/prism.md',
-            schema: $gateway . '/ucp/schema.json',
-            instrumentSchema: $gateway . '/ucp/instrument_schema.json',
-        );
     }
 }

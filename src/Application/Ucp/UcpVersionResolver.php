@@ -9,9 +9,6 @@ use Fd\PrismPayment\Core\Ucp\ServedVersion;
 use Ucp\Sdk\Model\Config\RuntimeConfiguration;
 use Ucp\Sdk\Model\RequestContext;
 
-/**
- * @internal
- */
 final readonly class UcpVersionResolver
 {
     public function __construct(
