@@ -23,6 +23,7 @@ spl_autoload_register(static function (string $class): void {
         'Fd\\PrismPayment\\Tests\\' => __DIR__ . '/',
         'Fd\\PrismPayment\\' => __DIR__ . '/../src/',
         'Doctrine\\DBAL\\' => __DIR__ . '/Support/Doctrine/DBAL/',
+        'Symfony\\Contracts\\HttpClient\\' => __DIR__ . '/Support/Symfony/HttpClient/',
     ];
 
     foreach ($prefixes as $prefix => $baseDir) {

@@ -17,5 +17,5 @@ use Fd\PrismPayment\Core\Ucp\HandlerDeclaration;
  */
 interface HandlerDeclarationSource
 {
-    public function fetch(PrismConfig $config, ?string $ucpVersion): HandlerDeclaration;
+    public function fetch(PrismConfig $config, string $ucpVersion): HandlerDeclaration;
 }
