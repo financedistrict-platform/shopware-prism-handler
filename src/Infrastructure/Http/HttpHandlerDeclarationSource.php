@@ -9,6 +9,7 @@ use Fd\PrismPayment\Core\Payment\PrismConfig;
 use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
 use Fd\PrismPayment\Core\Ucp\HandlerDeclaration;
 use Fd\PrismPayment\Core\Ucp\HandlerDeclarationParser;
+use Fd\PrismPayment\Core\Ucp\PluginVersion;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -32,15 +33,20 @@ final readonly class HttpHandlerDeclarationSource implements HandlerDeclarationS
     ) {
     }
 
-    public function fetch(PrismConfig $config): HandlerDeclaration
+    public function fetch(PrismConfig $config, ?string $ucpVersion): HandlerDeclaration
     {
-        $handlers = $this->getJson(
-            rtrim($config->baseUrl, '/') . self::HANDLERS_PATH,
-            ['X-API-Key' => $config->apiKey, 'Accept' => 'application/json'],
-        );
+        $url = rtrim($config->baseUrl, '/') . self::HANDLERS_PATH;
+        if (null !== $ucpVersion) {
+            $url .= '?ucp_version=' . rawurlencode($ucpVersion);
+        }
 
-        $schemaUrl = HandlerDeclarationParser::schemaUrl($handlers, $config->baseUrl);
-        $schema = $this->getJson($schemaUrl, ['Accept' => 'application/json']);
+        $handlers = $this->getJson($url, ['X-API-Key' => $config->apiKey, 'Accept' => 'application/json']);
+
+        $schema = null;
+        if (null === HandlerDeclarationParser::declaredInstrumentSchema($handlers, $config->baseUrl)) {
+            $schemaUrl = HandlerDeclarationParser::schemaUrl($handlers, $config->baseUrl);
+            $schema = $this->getJson($schemaUrl, ['Accept' => 'application/json']);
+        }
 
         return HandlerDeclarationParser::parse($handlers, $schema, $config->baseUrl);
     }
@@ -49,7 +55,7 @@ final readonly class HttpHandlerDeclarationSource implements HandlerDeclarationS
     {
         try {
             $response = $this->httpClient->request('GET', $url, [
-                'headers' => $headers,
+                'headers' => $headers + ['User-Agent' => PluginVersion::userAgent()],
                 'timeout' => self::TIMEOUT_SECONDS,
                 'max_redirects' => 0,
             ]);

@@ -53,6 +53,26 @@ Install, configure, and build are below — this README is the quick start.
 The plugin decorates the base Agentic Commerce checkout adapter, so the base extension must be
 present and active before you install this one.
 
+### Supported SwagAgenticCommerce and UCP versions
+
+| SwagAgenticCommerce | ucp-php-sdk | UCP served | Notes |
+|---|---|---|---|
+| 1.2.x | 0.0.5 | 2026-04-08 | Works as is. |
+| 1.3.x | 0.0.7 | 2026-08-25 | Works as is. |
+| 1.3.x + `fd-shopware-ucp-compat` 0.1.0 | 0.0.7 | 2026-08-25, 2026-04-08, 2026-01-23 | The compat plugin serves the older versions. |
+
+The handler follows the version the store serves: it asks Prism for that version
+(`?ucp_version=`) and sends `User-Agent: fd-shopware-prism/<version>` on every Prism call. Agents
+that still send original-era instruments (`handler_id` `x402`, `type` `tokenized` or missing) can
+still pay.
+
+To check the SDK portability claim against the SDK tags:
+
+```bash
+SDK=/path/to/ucp-php-sdk bash scripts/check-sdk-compat.sh
+# -> all symbols present in 0.0.5 and 0.0.7
+```
+
 ## Install
 
 **From the packaged zip** (recommended):
