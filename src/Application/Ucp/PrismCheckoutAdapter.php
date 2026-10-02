@@ -188,6 +188,8 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             );
         }
 
+        $ucpVersion = $this->versionResolver->resolve($context);
+
         // F1: atomically claim pending -> settling; only the winner performs the on-chain settle.
         if (!$this->store->claim($id)) {
             // Lost the claim: a concurrent (or prior) complete is settling / has settled.
@@ -202,7 +204,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             ));
         }
 
-        return $this->settle($id, $record, $context);
+        return $this->settle($id, $record, $context, $ucpVersion);
     }
 
     public function cancelCheckout(string $id, RequestContext $context): Checkout
@@ -234,13 +236,13 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         return $this->inner->cancelCheckout($id, $context);
     }
 
-    private function settle(string $sessionId, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
+    private function settle(string $sessionId, PrismSettlementRecord $record, RequestContext $context, string $ucpVersion): PrismSettlementRecord
     {
         // Guaranteed non-null by the hasCredential() gate + the F2 check before the claim.
         \assert(null !== $record->credential);
 
         $config = $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
-        $result = $this->client->settle($config, $this->versionResolver->resolve($context), $record->credential);
+        $result = $this->client->settle($config, $ucpVersion, $record->credential);
 
         if (!$result->success) {
             $this->store->markFailed($sessionId);
