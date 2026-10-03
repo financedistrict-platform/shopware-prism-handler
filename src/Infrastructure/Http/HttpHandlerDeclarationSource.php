@@ -13,19 +13,8 @@ use Fd\PrismPayment\Core\Ucp\PrismUserAgent;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-/**
- * Any transport error, non-2xx status, non-JSON body, missing handler entry, or missing/ill-typed
- * field throws {@see PrismApiException} — the provider then falls back to its static default, so a
- * fetch failure never breaks discovery.
- *
- * @internal
- */
 final readonly class HttpHandlerDeclarationSource implements HandlerDeclarationSource
 {
-    private const HANDLERS_PATH = '/api/v2/merchant/ucp/handlers';
-
-    // Discovery is behind a cache (see HandlerDeclarationProvider); this only runs on a cache miss,
-    // so a tight ceiling keeps a slow Prism from stalling the profile response.
     private const TIMEOUT_SECONDS = 5.0;
 
     public function __construct(
@@ -35,8 +24,8 @@ final readonly class HttpHandlerDeclarationSource implements HandlerDeclarationS
 
     public function fetch(PrismConfig $config, string $ucpVersion): HandlerDeclaration
     {
-        $url = rtrim($config->baseUrl, '/') . self::HANDLERS_PATH;
-        $userAgent = PrismUserAgent::forUcpVersion($ucpVersion);
+        $url = rtrim($config->baseUrl, '/') . '/api/v2/merchant/ucp/' . rawurlencode($ucpVersion) . '/handlers';
+        $userAgent = PrismUserAgent::VALUE;
 
         $handlers = $this->getJson($url, $userAgent, ['X-API-Key' => $config->apiKey, 'Accept' => 'application/json']);
 

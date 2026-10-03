@@ -6,10 +6,5 @@ namespace Fd\PrismPayment\Core\Ucp;
 
 final class PrismUserAgent
 {
-    private const PRODUCT = 'fd-shopware-prism';
-
-    public static function forUcpVersion(string $ucpVersion): string
-    {
-        return self::PRODUCT . '/' . $ucpVersion;
-    }
+    public const VALUE = 'fd-shopware-prism/0.7.2';
 }
