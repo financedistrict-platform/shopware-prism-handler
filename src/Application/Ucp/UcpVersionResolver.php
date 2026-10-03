@@ -20,7 +20,7 @@ final readonly class UcpVersionResolver
     {
         $version = ServedVersion::resolve($context->runtimeConfiguration?->version, $this->runtimeConfiguration?->version);
         if (null === $version) {
-            throw new PrismApiException('The served UCP version is unknown: neither the request nor the SDK configuration carries one.');
+            throw new \LogicException('The served UCP version is unknown: neither the request nor the SDK configuration carries one.');
         }
 
         return $version;
