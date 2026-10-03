@@ -1,10 +1,10 @@
-# Unreleased
+# 0.7.2
+
+Prism calls use the UCP version in the path (`/api/v2/merchant/ucp/<ucp-version>/handlers` and `/payment-requirements`). User-Agent is `fd-shopware-prism/0.7.2`. Settle no longer sends a UCP version. Needs Prism with versioned routes.
 
 - **Unknown UCP version is a configuration fault.** When neither the request nor the SDK
   `RuntimeConfiguration` carries a version, the resolver throws a `LogicException` instead of
   `PrismApiException`, so the Prism-degrade path can never swallow it.
-- **Version resolved before the settlement claim.** `complete` resolves the UCP version before moving
-  the row from pending to settling, so a resolver fault can no longer leave a row stuck in settling.
 
 # 0.7.1
 Patch release: the Prism User-Agent now names the UCP version. Needs Prism with the

@@ -6,13 +6,14 @@ namespace Fd\PrismPayment\Tests\Infrastructure\Http;
 
 use Fd\PrismPayment\Core\Payment\PrismConfig;
 use Fd\PrismPayment\Core\Payment\PrismResponseParser;
+use Fd\PrismPayment\Core\Ucp\PrismUserAgent;
 use Fd\PrismPayment\Infrastructure\Http\PrismHttpClient;
 use Fd\PrismPayment\Tests\Support\RecordingHttpClient;
 use PHPUnit\Framework\TestCase;
 
 final class PrismHttpClientTest extends TestCase
 {
-    public function testPaymentRequirementsSendsUcpVersionUserAgent(): void
+    public function testPaymentRequirementsUsesVersionedPathAndConstantUserAgent(): void
     {
         $entry = [
             'id' => 'xyz.fd.prism_payment',
@@ -24,18 +25,18 @@ final class PrismHttpClientTest extends TestCase
         (new PrismHttpClient($http, new PrismResponseParser()))
             ->paymentRequirements(new PrismConfig('https://prism.example', 'key'), '2026-08-25', '10.00', 'USD', 'https://shop.example/c/1', null);
 
-        self::assertSame('https://prism.example/api/v2/merchant/ucp/payment-requirements', $http->requests[0]['url']);
-        self::assertSame('fd-shopware-prism/2026-08-25', $http->userAgent(0));
+        self::assertSame('https://prism.example/api/v2/merchant/ucp/2026-08-25/payment-requirements', $http->requests[0]['url']);
+        self::assertSame(PrismUserAgent::VALUE, $http->userAgent(0));
     }
 
-    public function testSettleSendsUcpVersionUserAgent(): void
+    public function testSettleUsesConstantUserAgent(): void
     {
         $http = new RecordingHttpClient([['success' => true, 'transaction' => '0xabc', 'network' => 'base']]);
 
         (new PrismHttpClient($http, new PrismResponseParser()))
-            ->settle(new PrismConfig('https://prism.example', 'key'), '2026-04-08', ['paymentPayload' => []]);
+            ->settle(new PrismConfig('https://prism.example', 'key'), ['paymentPayload' => []]);
 
         self::assertSame('https://prism.example/api/v2/payment/settle', $http->requests[0]['url']);
-        self::assertSame('fd-shopware-prism/2026-04-08', $http->userAgent(0));
+        self::assertSame(PrismUserAgent::VALUE, $http->userAgent(0));
     }
 }

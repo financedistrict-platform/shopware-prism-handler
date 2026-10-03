@@ -9,8 +9,10 @@ use PHPUnit\Framework\TestCase;
 
 final class PrismUserAgentTest extends TestCase
 {
-    public function testUserAgentCarriesTheUcpVersion(): void
+    public function testUserAgentMatchesPackageVersion(): void
     {
-        self::assertSame('fd-shopware-prism/2026-08-25', PrismUserAgent::forUcpVersion('2026-08-25'));
+        $composer = json_decode((string) file_get_contents(__DIR__ . '/../../../composer.json'), true);
+
+        self::assertSame('fd-shopware-prism/' . $composer['version'], PrismUserAgent::VALUE);
     }
 }
