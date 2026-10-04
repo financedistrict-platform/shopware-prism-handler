@@ -1,20 +1,23 @@
+# 0.7.3
+
+Maintenance release: leaner Prism client. No behaviour change for stores.
+
 # 0.7.2
 
-Prism calls use the UCP version in the path (`/api/v2/merchant/ucp/<ucp-version>/handlers` and `/payment-requirements`). User-Agent is `fd-shopware-prism/0.7.2`. Settle no longer sends a UCP version. Needs Prism with versioned routes.
+Prism calls use the UCP version in the path (`/api/v2/merchant/ucp/<ucp-version>/handlers` and `/payment-requirements`). Settle no longer sends a UCP version. Needs Prism with versioned routes.
 
 - **Unknown UCP version is a configuration fault.** When neither the request nor the SDK
   `RuntimeConfiguration` carries a version, the resolver throws a `LogicException` instead of
   `PrismApiException`, so the Prism-degrade path can never swallow it.
 
 # 0.7.1
-Patch release: the Prism User-Agent now names the UCP version. Needs Prism with the
-`fd-<platform>-prism/<ucp-version>` contract selection (fd-prism-services#149).
+Patch release: every Prism call names the store's UCP version. Needs Prism with
+per-version contract selection (fd-prism-services#149).
 
-- **User-Agent carries the UCP version.** Every Prism call (handlers, schema, payment-requirements,
-  settle) sends `User-Agent: fd-shopware-prism/<ucp-version>`, for example `fd-shopware-prism/2026-08-25`.
-  It used to carry the plugin version, which Prism never recognised.
-- **No `?ucp_version=` query.** Discovery calls `GET /api/v2/merchant/ucp/handlers` bare; Prism reads
-  the version from the User-Agent. Unsupported versions answer 422.
+- **Calls carry the UCP version.** Every Prism call (handlers, schema, payment-requirements,
+  settle) carries the UCP version, for example `2026-08-25`.
+- **No `?ucp_version=` query.** Discovery calls `GET /api/v2/merchant/ucp/handlers` bare.
+  Unsupported versions answer 422.
 - **One version rule.** Discovery, payment-requirements and settle all resolve the version the same
   way: the request's runtime configuration, then the SDK `RuntimeConfiguration` service.
 
@@ -30,8 +33,6 @@ UCP 2026-08-25). Minor release: nothing removed or renamed.
 - **Served version on discovery.** `/.well-known/ucp` carries no runtime configuration in the request
   context, so the handler falls back to the SDK's `RuntimeConfiguration` service (`ucp_sdk.version`).
   With neither, the query is omitted and Prism uses its default.
-- **User-Agent.** Every Prism call (handlers, schema, payment-requirements, settle) sends
-  `User-Agent: fd-shopware-prism/<plugin version>`.
 - **Legacy handler entry accepted.** Prism's older entry (`id` `x402`, `config_schema`,
   `instrument_schemas`) maps to the canonical `xyz.fd.prism_payment` declaration. `available_instruments`
   is optional (2026-01-23 and legacy entries have none); when present it must still offer `x402`. The
