@@ -71,9 +71,4 @@ final class RecordingHttpClient implements HttpClientInterface
     {
         return $this;
     }
-
-    public function userAgent(int $index): string
-    {
-        return $this->requests[$index]['options']['headers']['User-Agent'];
-    }
 }

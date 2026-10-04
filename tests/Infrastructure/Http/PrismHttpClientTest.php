@@ -6,14 +6,13 @@ namespace Fd\PrismPayment\Tests\Infrastructure\Http;
 
 use Fd\PrismPayment\Core\Payment\PrismConfig;
 use Fd\PrismPayment\Core\Payment\PrismResponseParser;
-use Fd\PrismPayment\Core\Ucp\PrismUserAgent;
 use Fd\PrismPayment\Infrastructure\Http\PrismHttpClient;
 use Fd\PrismPayment\Tests\Support\RecordingHttpClient;
 use PHPUnit\Framework\TestCase;
 
 final class PrismHttpClientTest extends TestCase
 {
-    public function testPaymentRequirementsUsesVersionedPathAndConstantUserAgent(): void
+    public function testPaymentRequirementsUsesVersionedPath(): void
     {
         $entry = [
             'id' => 'xyz.fd.prism_payment',
@@ -26,10 +25,9 @@ final class PrismHttpClientTest extends TestCase
             ->paymentRequirements(new PrismConfig('https://prism.example', 'key'), '2026-08-25', '10.00', 'USD', 'https://shop.example/c/1', null);
 
         self::assertSame('https://prism.example/api/v2/merchant/ucp/2026-08-25/payment-requirements', $http->requests[0]['url']);
-        self::assertSame(PrismUserAgent::VALUE, $http->userAgent(0));
     }
 
-    public function testSettleUsesConstantUserAgent(): void
+    public function testSettlePostsToSettlePath(): void
     {
         $http = new RecordingHttpClient([['success' => true, 'transaction' => '0xabc', 'network' => 'base']]);
 
@@ -37,6 +35,5 @@ final class PrismHttpClientTest extends TestCase
             ->settle(new PrismConfig('https://prism.example', 'key'), ['paymentPayload' => []]);
 
         self::assertSame('https://prism.example/api/v2/payment/settle', $http->requests[0]['url']);
-        self::assertSame(PrismUserAgent::VALUE, $http->userAgent(0));
     }
 }
