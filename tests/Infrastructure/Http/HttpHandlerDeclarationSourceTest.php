@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\Tests\Infrastructure\Http;
 
 use Fd\PrismPayment\Core\Payment\PrismConfig;
-use Fd\PrismPayment\Core\Ucp\PrismUserAgent;
 use Fd\PrismPayment\Infrastructure\Http\HttpHandlerDeclarationSource;
 use Fd\PrismPayment\Tests\Support\RecordingHttpClient;
 use PHPUnit\Framework\TestCase;
@@ -14,7 +13,7 @@ final class HttpHandlerDeclarationSourceTest extends TestCase
 {
     private const BASE_URL = 'https://prism.example';
 
-    public function testHandlersRequestUsesVersionedPathAndConstantUserAgent(): void
+    public function testHandlersRequestUsesVersionedPath(): void
     {
         $client = new RecordingHttpClient([self::handlers(withInstrumentSchema: true)]);
 
@@ -22,10 +21,9 @@ final class HttpHandlerDeclarationSourceTest extends TestCase
 
         self::assertCount(1, $client->requests);
         self::assertSame('https://prism.example/api/v2/merchant/ucp/2026-04-08/handlers', $client->requests[0]['url']);
-        self::assertSame(PrismUserAgent::VALUE, $client->userAgent(0));
     }
 
-    public function testSchemaRequestCarriesTheSameUserAgent(): void
+    public function testSchemaIsFetchedWhenHandlersDeclareNoInstrumentSchema(): void
     {
         $client = new RecordingHttpClient([
             self::handlers(withInstrumentSchema: false),
@@ -36,8 +34,6 @@ final class HttpHandlerDeclarationSourceTest extends TestCase
 
         self::assertCount(2, $client->requests);
         self::assertSame(self::BASE_URL . '/ucp/schema.json', $client->requests[1]['url']);
-        self::assertSame(PrismUserAgent::VALUE, $client->userAgent(0));
-        self::assertSame(PrismUserAgent::VALUE, $client->userAgent(1));
     }
 
     /**
