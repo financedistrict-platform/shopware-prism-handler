@@ -16,3 +16,6 @@ composer.lock
 
 # Local package output
 .build/
+
+# PHPUnit result cache
+.phpunit.cache/
