@@ -79,9 +79,9 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
             }
 
             // The x402 resource binds the authorization to this purchase. Use the canonical
-            // session URL (built from the request host) — independent of the optional
+            // session URL (built from the store base URI) — independent of the optional
             // continue-url template the base extension may not have configured.
-            $resourceUrl = $checkout->continueUrl ?? $this->sessionUrl($context, $checkout->id);
+            $resourceUrl = $checkout->continueUrl ?? CheckoutSessionUrl::for($context, $checkout->id);
 
             $prismConfig = $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
             $ucpVersion = $this->versionResolver->resolve($context);
@@ -207,24 +207,5 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         // Major currency units, fixed scale. Prism reads the value in whole currency units
         // and performs the stablecoin conversion itself.
         return number_format($amount, 2, '.', '');
-    }
-
-    private function sessionUrl(RequestContext $context, string $checkoutId): string
-    {
-        $host = $context->host;
-        $scheme = str_contains($host, '://')
-            ? ''
-            : ($this->isLocalHost($host) ? 'http://' : 'https://');
-
-        return rtrim($scheme . $host, '/') . '/ucp/v1/checkout-sessions/' . $checkoutId;
-    }
-
-    private function isLocalHost(string $host): bool
-    {
-        $hostOnly = explode(':', $host)[0];
-
-        return 'localhost' === $hostOnly
-            || '127.0.0.1' === $hostOnly
-            || str_ends_with($hostOnly, '.localhost');
     }
 }
