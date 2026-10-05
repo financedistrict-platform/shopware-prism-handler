@@ -1,3 +1,7 @@
+# 0.7.4
+
+The x402 offer `resource.url` now keeps the store's scheme and port. It is built from the store base URI, so a store at `http://localhost:8081` gets `http://localhost:8081/ucp/v1/checkout-sessions/<id>` instead of `http://localhost/...`.
+
 # 0.7.3
 
 Maintenance release: leaner Prism client. No behaviour change for stores.
