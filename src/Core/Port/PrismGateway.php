@@ -12,7 +12,6 @@ interface PrismGateway
     /** @return array<string, mixed> */
     public function paymentRequirements(
         PrismConfig $config,
-        string $ucpVersion,
         string $amount,
         string $currency,
         string $resourceUrl,

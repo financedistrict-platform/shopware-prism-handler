@@ -14,6 +14,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final readonly class PrismHttpClient implements PrismGateway
 {
+    private const PAYMENT_REQUIREMENTS_PATH = '/api/v2/merchant/payment-requirements';
+
     private const SETTLE_PATH = '/api/v2/payment/settle';
 
     private const QUOTE_TIMEOUT_SECONDS = 10.0;
@@ -28,7 +30,6 @@ final readonly class PrismHttpClient implements PrismGateway
 
     public function paymentRequirements(
         PrismConfig $config,
-        string $ucpVersion,
         string $amount,
         string $currency,
         string $resourceUrl,
@@ -39,13 +40,13 @@ final readonly class PrismHttpClient implements PrismGateway
             $resource['description'] = $resourceDescription;
         }
 
-        $data = $this->post($config, '/api/v2/merchant/ucp/' . rawurlencode($ucpVersion) . '/payment-requirements', [
+        $data = $this->post($config, self::PAYMENT_REQUIREMENTS_PATH, [
             'amount' => $amount,
             'currency' => $currency,
             'resource' => $resource,
         ], self::QUOTE_TIMEOUT_SECONDS);
 
-        return $this->parser->paymentRequirementsEntry($data);
+        return $this->parser->paymentRequirementsConfig($data);
     }
 
     public function settle(PrismConfig $config, array $credential): SettleResult
