@@ -20,7 +20,7 @@ final class HttpHandlerDeclarationSourceTest extends TestCase
         (new HttpHandlerDeclarationSource($client))->fetch(new PrismConfig(self::BASE_URL, 'key'), '2026-04-08');
 
         self::assertCount(1, $client->requests);
-        self::assertSame('https://prism.example/api/v2/merchant/ucp/2026-04-08/handlers', $client->requests[0]['url']);
+        self::assertSame('https://prism.example/ucp/2026-04-08/handlers', $client->requests[0]['url']);
     }
 
     public function testSchemaIsFetchedWhenHandlersDeclareNoInstrumentSchema(): void

@@ -23,7 +23,7 @@ final readonly class HttpHandlerDeclarationSource implements HandlerDeclarationS
 
     public function fetch(PrismConfig $config, string $ucpVersion): HandlerDeclaration
     {
-        $url = rtrim($config->baseUrl, '/') . '/api/v2/merchant/ucp/' . rawurlencode($ucpVersion) . '/handlers';
+        $url = rtrim($config->baseUrl, '/') . '/ucp/' . rawurlencode($ucpVersion) . '/handlers';
         $handlers = $this->getJson($url, ['X-API-Key' => $config->apiKey, 'Accept' => 'application/json']);
 
         $schema = null;
