@@ -1,3 +1,7 @@
+# 0.7.5
+
+The x402 offer comes from `POST /api/v2/merchant/payment-requirements`, which has no UCP version in the path and returns raw x402. The checkout entry takes its `id` and `version` from the same handler declaration `/.well-known/ucp` serves, so discovery and checkout always agree. Needs Prism with the protocol-free payment-requirements route.
+
 # 0.7.4
 
 The x402 offer `resource.url` now keeps the store's scheme and port. It is built from the store base URI, so a store at `http://localhost:8081` gets `http://localhost:8081/ucp/v1/checkout-sessions/<id>` instead of `http://localhost/...`.

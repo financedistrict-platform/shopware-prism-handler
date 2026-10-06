@@ -12,19 +12,37 @@ use PHPUnit\Framework\TestCase;
 
 final class PrismHttpClientTest extends TestCase
 {
-    public function testPaymentRequirementsUsesVersionedPath(): void
+    public function testPaymentRequirementsPostsToProtocolFreePath(): void
     {
-        $entry = [
-            'id' => 'xyz.fd.prism_payment',
-            'version' => '2026-10-07',
-            'config' => ['x402Version' => 2, 'accepts' => [['scheme' => 'exact']]],
-        ];
-        $http = new RecordingHttpClient([['xyz.fd.prism_payment' => [$entry]]]);
+        $http = new RecordingHttpClient([self::body()]);
 
-        (new PrismHttpClient($http, new PrismResponseParser()))
-            ->paymentRequirements(new PrismConfig('https://prism.example', 'key'), '2026-08-25', '10.00', 'USD', 'https://shop.example/c/1', null);
+        $this->client($http)->paymentRequirements(new PrismConfig('https://prism.example', 'key'), '10.00', 'USD', 'https://shop.example/c/1', null);
 
-        self::assertSame('https://prism.example/api/v2/merchant/ucp/2026-08-25/payment-requirements', $http->requests[0]['url']);
+        self::assertSame('POST', $http->requests[0]['method']);
+        self::assertSame('https://prism.example/api/v2/merchant/payment-requirements', $http->requests[0]['url']);
+        self::assertStringNotContainsString('/ucp/', $http->requests[0]['url']);
+    }
+
+    public function testPaymentRequirementsSendsAmountCurrencyAndResource(): void
+    {
+        $http = new RecordingHttpClient([self::body()]);
+
+        $this->client($http)->paymentRequirements(new PrismConfig('https://prism.example', 'key'), '10.00', 'USD', 'https://shop.example/c/1', 'Mug');
+
+        self::assertSame(
+            ['amount' => '10.00', 'currency' => 'USD', 'resource' => ['url' => 'https://shop.example/c/1', 'description' => 'Mug']],
+            $http->requests[0]['options']['json'],
+        );
+    }
+
+    public function testPaymentRequirementsReturnsRawConfig(): void
+    {
+        $body = self::body();
+        $http = new RecordingHttpClient([$body]);
+
+        $result = $this->client($http)->paymentRequirements(new PrismConfig('https://prism.example', 'key'), '10.00', 'USD', 'https://shop.example/c/1', null);
+
+        self::assertSame($body, $result);
     }
 
     public function testSettlePostsToSettlePath(): void
@@ -35,5 +53,20 @@ final class PrismHttpClientTest extends TestCase
             ->settle(new PrismConfig('https://prism.example', 'key'), ['paymentPayload' => []]);
 
         self::assertSame('https://prism.example/api/v2/payment/settle', $http->requests[0]['url']);
+    }
+
+    private function client(RecordingHttpClient $http): PrismHttpClient
+    {
+        return new PrismHttpClient($http, new PrismResponseParser());
+    }
+
+    /** @return array<string, mixed> */
+    private static function body(): array
+    {
+        return [
+            'x402Version' => 2,
+            'resource' => ['url' => 'https://shop.example/c/1'],
+            'accepts' => [['scheme' => 'exact']],
+        ];
     }
 }
