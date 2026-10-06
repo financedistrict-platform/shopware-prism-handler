@@ -1,3 +1,7 @@
+# 0.7.6
+
+Handler discovery calls the public `GET /ucp/<ucp-version>/handlers` instead of `/api/v2/merchant/ucp/<ucp-version>/handlers`. Needs Prism with the public handlers route.
+
 # 0.7.5
 
 The x402 offer comes from `POST /api/v2/merchant/payment-requirements`, which has no UCP version in the path and returns raw x402. The checkout entry takes its `id` and `version` from the same handler declaration `/.well-known/ucp` serves, so discovery and checkout always agree. Needs Prism with the protocol-free payment-requirements route.
