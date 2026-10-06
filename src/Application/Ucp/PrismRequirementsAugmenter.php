@@ -86,9 +86,6 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
             }
 
             $entry = PrismCheckoutEntry::compose($declaration, $config);
-            if (null === $entry) {
-                return $checkout;
-            }
 
             $this->credentialStore->recordOffer($checkout->id, $fiatAmount, $currency, $entry);
         }

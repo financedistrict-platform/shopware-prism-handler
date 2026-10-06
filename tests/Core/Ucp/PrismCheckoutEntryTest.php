@@ -49,9 +49,4 @@ final class PrismCheckoutEntryTest extends TestCase
         self::assertNotNull($entry);
         self::assertSame($config, $entry['config']);
     }
-
-    public function testNoDeclarationMeansNoEntry(): void
-    {
-        self::assertNull(PrismCheckoutEntry::compose(null, ['x402Version' => 2, 'accepts' => []]));
-    }
 }
