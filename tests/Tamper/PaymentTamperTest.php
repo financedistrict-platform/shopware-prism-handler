@@ -167,6 +167,78 @@ final class PaymentTamperTest extends TestCase
         yield 'unreadable order total' => ['10.00', 'EUR', '10.00', 'EUR', 'abc', 'EUR', false];
     }
 
+    public function testCartChangedAfterQuoteIsRefusedBeforeSettlement(): void
+    {
+        $this->inner->cartTotal = '500.00';
+
+        $this->expectSettlementRefused();
+    }
+
+    public function testCurrencySwitchedAfterQuoteIsRefusedBeforeSettlement(): void
+    {
+        $this->inner->cartCurrency = 'USD';
+
+        $this->expectSettlementRefused();
+    }
+
+    public function testCartWithoutTotalIsRefusedBeforeSettlement(): void
+    {
+        $this->inner->cartHasTotal = false;
+
+        $this->expectSettlementRefused();
+    }
+
+    public function testQuoteWithoutAmountIsRefusedBeforeSettlement(): void
+    {
+        $this->store->recordOffer(self::SESSION, '', 'EUR', $this->cheapCartOffer());
+
+        $this->expectSettlementRefused();
+    }
+
+    public function testUnchangedCartSettlesAndIsMarkedPaid(): void
+    {
+        $this->store->recordOffer(self::SESSION, '10.00', 'EUR', $this->cheapCartOffer());
+
+        $this->completeWithCheapCartSignature();
+
+        self::assertSame(1, $this->gateway->settlements);
+        self::assertCount(1, $this->stateHandler->paid);
+    }
+
+    #[DataProvider('quotedCartCases')]
+    public function testQuoteCoversOnlyTheCartItWasIssuedFor(
+        ?string $quotedAmount,
+        ?string $quotedCurrency,
+        string $cartAmount,
+        string $cartCurrency,
+        bool $covered,
+    ): void {
+        $record = new PrismSettlementRecord(
+            checkoutSessionId: self::SESSION,
+            credential: null,
+            status: SettlementStatus::PENDING,
+            transactionHash: null,
+            network: null,
+            offeredEntry: $this->cheapCartOffer(),
+            quotedAmount: $quotedAmount,
+            quotedCurrency: $quotedCurrency,
+        );
+
+        self::assertSame($covered, $record->quotedFor($cartAmount, $cartCurrency));
+    }
+
+    public static function quotedCartCases(): iterable
+    {
+        yield 'same cart' => ['10.00', 'EUR', '10', 'EUR', true];
+        yield 'bigger cart' => ['10.00', 'EUR', '500', 'EUR', false];
+        yield 'one cent more' => ['10.00', 'EUR', '10.01', 'EUR', false];
+        yield 'currency switch' => ['10.00', 'EUR', '10', 'USD', false];
+        yield 'zero-decimal currency' => ['1000.00', 'JPY', '1000', 'JPY', true];
+        yield 'three-decimal currency rounded quote' => ['1.23', 'KWD', '1.234', 'KWD', false];
+        yield 'missing quote' => [null, null, '10', 'EUR', false];
+        yield 'unreadable cart total' => ['10.00', 'EUR', 'abc', 'EUR', false];
+    }
+
     public function testCartChangesAreRefusedOnceSettlementStarted(): void
     {
         $machine = new SettlementStateMachine();
@@ -200,6 +272,39 @@ final class PaymentTamperTest extends TestCase
         }
 
         self::assertSame(SettlementStatus::SETTLED, $this->store->rows[self::SESSION]['status']);
+    }
+
+    private function expectSettlementRefused(): void
+    {
+        if (null === $this->store->load(self::SESSION)) {
+            $this->store->recordOffer(self::SESSION, '10.00', 'EUR', $this->cheapCartOffer());
+        }
+
+        try {
+            $this->completeWithCheapCartSignature();
+            self::fail('A payment quoted for another cart was settled.');
+        } catch (ValidationException) {
+        }
+
+        self::assertSame(0, $this->gateway->settlements, 'Prism settled a payment quoted for another cart.');
+        self::assertSame([], $this->stateHandler->paid);
+    }
+
+    private function cheapCartOffer(): array
+    {
+        return ['id' => HandlerId::PRISM, 'config' => ['accepts' => [self::REQUIREMENTS]]];
+    }
+
+    private function completeWithCheapCartSignature(): void
+    {
+        $this->adapter->completeCheckoutFromRequest(
+            new CheckoutCompleteRequest(id: self::SESSION, instruments: [new PaymentInstrument(
+                handlerId: HandlerId::PRISM,
+                type: 'x402',
+                credential: ['paymentPayload' => ['signature' => '0xsig'], 'paymentRequirements' => self::REQUIREMENTS],
+            )]),
+            new RequestContext(),
+        );
     }
 
     private function expectCompleteRefused(): void

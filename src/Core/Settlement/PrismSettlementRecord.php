@@ -45,6 +45,15 @@ final readonly class PrismSettlementRecord
     ) {
     }
 
+    public function quotedFor(string $cartAmount, string $cartCurrency): bool
+    {
+        if (null === $this->offeredEntry || null === $this->quotedAmount || null === $this->quotedCurrency) {
+            return false;
+        }
+
+        return MinorUnits::sameMoney($this->quotedAmount, $this->quotedCurrency, $cartAmount, $cartCurrency);
+    }
+
     public function settledFor(string $orderAmount, string $orderCurrency): bool
     {
         if (!$this->isSettled()

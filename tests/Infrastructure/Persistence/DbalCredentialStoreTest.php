@@ -114,6 +114,66 @@ final class DbalCredentialStoreTest extends TestCase
         self::assertSame('EUR', $record->settledCurrency);
     }
 
+    #[DataProvider('lockedStatuses')]
+    public function testInvalidateCredentialLeavesLockedRowUntouched(string $status): void
+    {
+        $this->seed($status);
+
+        $this->store->invalidateCredential(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => $status, 'credential' => self::CREDENTIAL],
+            $this->row(),
+        );
+    }
+
+    public function testInvalidateCredentialDuringSettleKeepsSettlementRecordable(): void
+    {
+        $this->seed(SettlementStatus::PENDING);
+        self::assertTrue($this->store->claim(self::SESSION_ID));
+
+        $this->store->invalidateCredential(self::SESSION_ID);
+        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base', '10.00', 'EUR');
+
+        $record = $this->store->load(self::SESSION_ID);
+        self::assertNotNull($record);
+        self::assertTrue($record->isSettled());
+    }
+
+    #[DataProvider('releasableStatuses')]
+    public function testWithdrawOfferDropsTheQuoteOfAnOpenSession(string $status): void
+    {
+        $this->seedWithOffer($status);
+
+        $this->store->withdrawOffer(self::SESSION_ID);
+
+        $record = $this->store->load(self::SESSION_ID);
+        self::assertNotNull($record);
+        self::assertNull($record->offeredAccepts());
+        self::assertNull($record->quotedAmount);
+        self::assertFalse($record->quotedFor('10.00', 'EUR'));
+    }
+
+    #[DataProvider('lockedStatuses')]
+    public function testWithdrawOfferKeepsTheQuoteOfALockedSession(string $status): void
+    {
+        $this->seedWithOffer($status);
+
+        $this->store->withdrawOffer(self::SESSION_ID);
+
+        $record = $this->store->load(self::SESSION_ID);
+        self::assertNotNull($record);
+        self::assertSame('10.00', $record->quotedAmount);
+    }
+
+    private function seedWithOffer(string $status): void
+    {
+        $this->seed($status);
+        $this->pdo->prepare('UPDATE fd_prism_payment_settlement SET offered_accepts = :offer')->execute([
+            'offer' => '{"quotedAmount":"10.00","quotedCurrency":"EUR","entry":{"config":{"accepts":[{"payTo":"0xmerchant"}]}}}',
+        ]);
+    }
+
     private function seed(string $status): void
     {
         $this->pdo->prepare(

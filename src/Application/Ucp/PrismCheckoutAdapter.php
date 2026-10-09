@@ -131,6 +131,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         if (!$record->isSettled()) {
+            $this->assertQuoteCoversCart($id, $record, $context);
             $record = $this->settleOnce($id, $record, $context);
         }
 
@@ -138,6 +139,18 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         $this->markOrderPaid($checkout, $record);
 
         return $checkout;
+    }
+
+    private function assertQuoteCoversCart(string $id, PrismSettlementRecord $record, RequestContext $context): void
+    {
+        $cart = $this->inner->getCheckout($id, $context);
+        $total = CheckoutTotal::of($cart);
+
+        if (null === $total || !$record->quotedFor((string) $total, $cart->currency)) {
+            throw new ValidationException(
+                'The cart changed after this Prism payment was quoted. Fetch the checkout again and submit a new payment.',
+            );
+        }
     }
 
     private function settleOnce(string $id, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord

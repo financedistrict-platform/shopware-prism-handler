@@ -8,6 +8,7 @@ use Ucp\Sdk\Adapter\CheckoutAdapterInterface;
 use Ucp\Sdk\Model\Checkout\Checkout;
 use Ucp\Sdk\Model\Checkout\CheckoutCreateRequest;
 use Ucp\Sdk\Model\Checkout\CheckoutUpdateRequest;
+use Ucp\Sdk\Model\Common\Money;
 use Ucp\Sdk\Model\RequestContext;
 
 final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
@@ -17,6 +18,8 @@ final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
     public string $cartCurrency = 'EUR';
 
     public ?string $cartTotalOnUpdate = null;
+
+    public bool $cartHasTotal = true;
 
     public int $failingPlacements = 0;
 
@@ -34,7 +37,7 @@ final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
 
     public function getCheckout(string $id, RequestContext $context): Checkout
     {
-        return new Checkout(id: $id, currency: $this->cartCurrency);
+        return new Checkout(id: $id, currency: $this->cartCurrency, totals: $this->totals());
     }
 
     public function updateCheckout(CheckoutUpdateRequest $request, RequestContext $context): Checkout
@@ -63,5 +66,12 @@ final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
     public function cancelCheckout(string $id, RequestContext $context): Checkout
     {
         return new Checkout(id: $id);
+    }
+
+    public function totals(): array
+    {
+        return $this->cartHasTotal
+            ? [new Money('subtotal', (float) $this->cartTotal), new Money('total', (float) $this->cartTotal)]
+            : [new Money('subtotal', (float) $this->cartTotal)];
     }
 }

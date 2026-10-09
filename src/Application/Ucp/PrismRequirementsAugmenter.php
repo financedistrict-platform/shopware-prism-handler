@@ -15,7 +15,6 @@ use Psr\Log\LoggerInterface;
 use Ucp\Sdk\Contract\CheckoutResponseAugmenterInterface;
 use Ucp\Sdk\Enum\CheckoutStatus;
 use Ucp\Sdk\Model\Checkout\Checkout;
-use Ucp\Sdk\Model\Common\Money;
 use Ucp\Sdk\Model\RequestContext;
 
 /**
@@ -43,7 +42,7 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
             return $this->withSettlement($checkout);
         }
 
-        $amount = $this->totalAmount($checkout);
+        $amount = CheckoutTotal::of($checkout);
         if (null === $amount || $amount <= 0.0) {
             return $checkout;
         }
@@ -58,6 +57,10 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         } else {
             if (null !== $existing && $existing->hasCredential()) {
                 $this->credentialStore->invalidateCredential($checkout->id);
+            }
+
+            if (null !== $existing) {
+                $this->credentialStore->withdrawOffer($checkout->id);
             }
 
             $resourceUrl = $checkout->continueUrl ?? CheckoutSessionUrl::for($context, $checkout->id);
@@ -150,17 +153,6 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
             order: $checkout->order,
             extra: $extra,
         );
-    }
-
-    private function totalAmount(Checkout $checkout): ?float
-    {
-        foreach ($checkout->totals as $money) {
-            if ($money instanceof Money && 'total' === $money->type) {
-                return $money->amount;
-            }
-        }
-
-        return null;
     }
 
     private const MAX_DESCRIPTION_LENGTH = 100;

@@ -26,9 +26,11 @@ interface CredentialStore
     /**
      * Invalidate the captured Prism credential because the cart amount changed after it was signed
      * (or a settle failed): clear the credential and move the row to `failed` so complete REFUSES
-     * (the agent must re-sign for the new amount). No-op on a settled row (F0).
+     * (the agent must re-sign for the new amount). No-op on a settled or settling row (F0).
      */
     public function invalidateCredential(string $sessionId): void;
+
+    public function withdrawOffer(string $sessionId): void;
 
     /**
      * Release our claim on a session because the agent selected a DIFFERENT payment method: clear

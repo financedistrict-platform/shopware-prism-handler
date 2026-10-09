@@ -63,15 +63,31 @@ final class DbalCredentialStore implements CredentialStore
     public function invalidateCredential(string $sessionId): void
     {
         // Cart amount changed after signing (or settle failed): drop the credential and move to
-        // failed so complete refuses until a fresh signature is submitted. Settled rows untouched.
+        // failed so complete refuses until a fresh signature is submitted. Settled and settling rows untouched.
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
              SET status = :failed, credential = NULL, updated_at = :now
-             WHERE checkout_session_id = :id AND status <> :settled',
+             WHERE checkout_session_id = :id AND status NOT IN (:settled, :settling)',
             [
                 'id' => $sessionId,
                 'failed' => SettlementStatus::FAILED,
                 'settled' => SettlementStatus::SETTLED,
+                'settling' => SettlementStatus::SETTLING,
+                'now' => $this->now(),
+            ],
+        );
+    }
+
+    public function withdrawOffer(string $sessionId): void
+    {
+        $this->connection->executeStatement(
+            'UPDATE fd_prism_payment_settlement
+             SET offered_accepts = NULL, updated_at = :now
+             WHERE checkout_session_id = :id AND status NOT IN (:settled, :settling)',
+            [
+                'id' => $sessionId,
+                'settled' => SettlementStatus::SETTLED,
+                'settling' => SettlementStatus::SETTLING,
                 'now' => $this->now(),
             ],
         );

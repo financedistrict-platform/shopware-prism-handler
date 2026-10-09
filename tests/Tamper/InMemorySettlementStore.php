@@ -28,12 +28,23 @@ final class InMemorySettlementStore implements CredentialStore
 
     public function invalidateCredential(string $sessionId): void
     {
-        if (!isset($this->rows[$sessionId]) || SettlementStatus::SETTLED === $this->rows[$sessionId]['status']) {
+        if (!isset($this->rows[$sessionId]) || $this->isLocked($sessionId)) {
             return;
         }
 
         $this->rows[$sessionId]['status'] = SettlementStatus::FAILED;
         $this->rows[$sessionId]['credential'] = null;
+    }
+
+    public function withdrawOffer(string $sessionId): void
+    {
+        if (!isset($this->rows[$sessionId]) || $this->isLocked($sessionId)) {
+            return;
+        }
+
+        $this->rows[$sessionId]['offeredEntry'] = null;
+        $this->rows[$sessionId]['quotedAmount'] = null;
+        $this->rows[$sessionId]['quotedCurrency'] = null;
     }
 
     public function releaseToBase(string $sessionId): void
