@@ -105,12 +105,32 @@ final class PaymentTamperTest extends TestCase
     public function testSettledSessionWithoutSettledAmountIsNeverMarkedPaid(): void
     {
         $this->settleCheapCartWithFailedPlacement();
-        $this->store->rows[self::SESSION]['settledAmount'] = null;
-        $this->store->rows[self::SESSION]['settledCurrency'] = null;
+        $this->store->rows[self::SESSION]['settledQuoteAmount'] = null;
+        $this->store->rows[self::SESSION]['settledQuoteCurrency'] = null;
 
         $this->expectCompleteRefused();
 
         self::assertSame([], $this->stateHandler->paid);
+    }
+
+    public function testSettledSessionRefusesCompletionWithAnotherPaymentMethod(): void
+    {
+        $this->settleCheapCartWithFailedPlacement();
+
+        try {
+            $this->adapter->completeCheckoutFromRequest(
+                new CheckoutCompleteRequest(id: self::SESSION, instruments: [new PaymentInstrument(
+                    handlerId: 'com.example.invoice',
+                    type: 'invoice',
+                )]),
+                new RequestContext(),
+            );
+            self::fail('A settled checkout was completed with another payment method.');
+        } catch (ValidationException) {
+        }
+
+        self::assertSame(0, $this->tables->orderCount());
+        self::assertSame(SettlementStatus::SETTLED, $this->store->rows[self::SESSION]['status']);
     }
 
     public function testSettledSessionCompletesTheSameCartAsPaid(): void
@@ -128,8 +148,8 @@ final class PaymentTamperTest extends TestCase
     public function testSettledRecordCoversOnlyItsOwnOrderTotal(
         ?string $quotedAmount,
         ?string $quotedCurrency,
-        ?string $settledAmount,
-        ?string $settledCurrency,
+        ?string $settledQuoteAmount,
+        ?string $settledQuoteCurrency,
         string $orderAmount,
         string $orderCurrency,
         bool $covered,
@@ -142,8 +162,8 @@ final class PaymentTamperTest extends TestCase
             network: 'base',
             quotedAmount: $quotedAmount,
             quotedCurrency: $quotedCurrency,
-            settledAmount: $settledAmount,
-            settledCurrency: $settledCurrency,
+            settledQuoteAmount: $settledQuoteAmount,
+            settledQuoteCurrency: $settledQuoteCurrency,
         );
 
         self::assertSame($covered, $record->settledFor($orderAmount, $orderCurrency));

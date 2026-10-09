@@ -40,8 +40,8 @@ final readonly class PrismSettlementRecord
         public ?array $offeredEntry = null,
         public ?string $quotedAmount = null,
         public ?string $quotedCurrency = null,
-        public ?string $settledAmount = null,
-        public ?string $settledCurrency = null,
+        public ?string $settledQuoteAmount = null,
+        public ?string $settledQuoteCurrency = null,
     ) {
     }
 
@@ -59,14 +59,14 @@ final readonly class PrismSettlementRecord
         if (!$this->isSettled()
             || null === $this->quotedAmount
             || null === $this->quotedCurrency
-            || null === $this->settledAmount
-            || null === $this->settledCurrency
+            || null === $this->settledQuoteAmount
+            || null === $this->settledQuoteCurrency
         ) {
             return false;
         }
 
         return MinorUnits::sameMoney($this->quotedAmount, $this->quotedCurrency, $orderAmount, $orderCurrency)
-            && MinorUnits::sameMoney($this->settledAmount, $this->settledCurrency, $orderAmount, $orderCurrency);
+            && MinorUnits::sameMoney($this->settledQuoteAmount, $this->settledQuoteCurrency, $orderAmount, $orderCurrency);
     }
 
     /**

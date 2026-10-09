@@ -31,8 +31,8 @@ final class DbalCredentialStoreTest extends TestCase
                 status TEXT NOT NULL,
                 transaction_hash TEXT NULL,
                 network TEXT NULL,
-                settled_amount TEXT NULL,
-                settled_currency TEXT NULL,
+                settled_quote_amount TEXT NULL,
+                settled_quote_currency TEXT NULL,
                 offered_accepts TEXT NULL,
                 order_id BLOB NULL,
                 created_at TEXT NOT NULL,
@@ -110,8 +110,8 @@ final class DbalCredentialStoreTest extends TestCase
 
         $record = $this->store->load(self::SESSION_ID);
         self::assertNotNull($record);
-        self::assertSame('10.00', $record->settledAmount);
-        self::assertSame('EUR', $record->settledCurrency);
+        self::assertSame('10.00', $record->settledQuoteAmount);
+        self::assertSame('EUR', $record->settledQuoteCurrency);
     }
 
     #[DataProvider('lockedStatuses')]

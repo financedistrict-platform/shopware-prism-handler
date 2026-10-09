@@ -61,8 +61,8 @@ interface CredentialStore
         string $sessionId,
         string $transactionHash,
         string $network,
-        string $settledAmount,
-        string $settledCurrency,
+        string $settledQuoteAmount,
+        string $settledQuoteCurrency,
     ): void;
 
     public function markFailed(string $sessionId): void;

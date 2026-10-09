@@ -84,7 +84,11 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             }
 
             $existing = $this->store->load($request->id);
-            if (null !== $existing && !$existing->isSettled()) {
+            if (null !== $existing && $existing->isSettled()) {
+                throw new ValidationException('This checkout is already paid with Prism; complete it without changing the payment method.');
+            }
+
+            if (null !== $existing) {
                 if (!$this->stateMachine->mayCapture($existing->status)) {
                     throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
                 }

@@ -96,12 +96,12 @@ final class InMemorySettlementStore implements CredentialStore
             offeredEntry: $row['offeredEntry'],
             quotedAmount: $row['quotedAmount'],
             quotedCurrency: $row['quotedCurrency'],
-            settledAmount: $row['settledAmount'],
-            settledCurrency: $row['settledCurrency'],
+            settledQuoteAmount: $row['settledQuoteAmount'],
+            settledQuoteCurrency: $row['settledQuoteCurrency'],
         );
     }
 
-    public function markSettled(string $sessionId, string $transactionHash, string $network, string $settledAmount, string $settledCurrency): void
+    public function markSettled(string $sessionId, string $transactionHash, string $network, string $settledQuoteAmount, string $settledQuoteCurrency): void
     {
         if (SettlementStatus::SETTLING !== ($this->rows[$sessionId]['status'] ?? null)) {
             return;
@@ -110,8 +110,8 @@ final class InMemorySettlementStore implements CredentialStore
         $this->rows[$sessionId]['status'] = SettlementStatus::SETTLED;
         $this->rows[$sessionId]['transactionHash'] = $transactionHash;
         $this->rows[$sessionId]['network'] = $network;
-        $this->rows[$sessionId]['settledAmount'] = $settledAmount;
-        $this->rows[$sessionId]['settledCurrency'] = $settledCurrency;
+        $this->rows[$sessionId]['settledQuoteAmount'] = $settledQuoteAmount;
+        $this->rows[$sessionId]['settledQuoteCurrency'] = $settledQuoteCurrency;
     }
 
     public function markFailed(string $sessionId): void
@@ -142,8 +142,8 @@ final class InMemorySettlementStore implements CredentialStore
             'offeredEntry' => null,
             'quotedAmount' => null,
             'quotedCurrency' => null,
-            'settledAmount' => null,
-            'settledCurrency' => null,
+            'settledQuoteAmount' => null,
+            'settledQuoteCurrency' => null,
             'orderId' => null,
         ];
     }

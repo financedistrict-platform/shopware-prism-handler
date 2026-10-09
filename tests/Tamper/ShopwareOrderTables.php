@@ -30,6 +30,11 @@ final class ShopwareOrderTables
         return new Connection($this->pdo);
     }
 
+    public function orderCount(): int
+    {
+        return (int) $this->pdo->query('SELECT COUNT(*) FROM `order`')->fetchColumn();
+    }
+
     public function placeOrder(string $orderId, string $total, string $currency): void
     {
         $this->pdo->prepare('INSERT OR IGNORE INTO currency VALUES (unhex(:id), :iso)')
