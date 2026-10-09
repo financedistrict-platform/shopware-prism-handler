@@ -127,7 +127,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
         if ($record->isFailed()) {
             throw new ValidationException(
-                'This checkout has a Prism payment that is no longer valid (the cart changed). '
+                'This checkout has a Prism payment that is no longer valid (the cart changed or the quote expired). '
                 . 'Submit a new payment before completing.',
             );
         }

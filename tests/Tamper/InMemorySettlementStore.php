@@ -16,7 +16,7 @@ final class InMemorySettlementStore implements CredentialStore
     public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry, \DateTimeImmutable $quotedAt): void
     {
         $row = $this->rows[$sessionId] ?? $this->emptyRow();
-        if (SettlementStatus::SETTLED === $row['status']) {
+        if (\in_array($row['status'], [SettlementStatus::SETTLED, SettlementStatus::SETTLING], true)) {
             return;
         }
 

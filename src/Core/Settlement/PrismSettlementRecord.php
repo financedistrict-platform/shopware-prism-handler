@@ -29,6 +29,10 @@ final readonly class PrismSettlementRecord
 {
     public const QUOTE_TTL_SECONDS = 600;
 
+    public const QUOTE_SERVE_MARGIN_SECONDS = 60;
+
+    public const CLOCK_SKEW_SECONDS = 30;
+
     /**
      * @param array<string, mixed>|null $credential   the wallet's whole signed x402 output, verbatim
      * @param array<string, mixed>|null $offeredEntry  the full handler entry {id,version,config} we last offered
@@ -118,7 +122,7 @@ final readonly class PrismSettlementRecord
         return null !== $this->offeredEntry
             && $this->quotedAmount === $amount
             && $this->quotedCurrency === $currency
-            && ($this->isLocked() || $this->quoteFreshAt($now));
+            && ($this->isLocked() || $this->quoteFreshAt($now->modify(sprintf('+%d seconds', self::QUOTE_SERVE_MARGIN_SECONDS))));
     }
 
     public function quoteFreshAt(\DateTimeImmutable $now): bool
@@ -129,7 +133,7 @@ final readonly class PrismSettlementRecord
 
         $age = $now->getTimestamp() - $this->quotedAt->getTimestamp();
 
-        return $age >= 0 && $age < self::QUOTE_TTL_SECONDS;
+        return $age >= -self::CLOCK_SKEW_SECONDS && $age < self::QUOTE_TTL_SECONDS;
     }
 
     public function isSettled(): bool

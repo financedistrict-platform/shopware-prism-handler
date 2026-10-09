@@ -140,6 +140,17 @@ final class QuoteExpiryTamperTest extends TestCase
         self::assertEquals($this->clock->now(), $record->quotedAt, 'An expired offer was served again instead of re-quoted.');
     }
 
+    public function testOfferAboutToExpireIsRequotedInsteadOfServedAgain(): void
+    {
+        $this->clock->advance(PrismSettlementRecord::QUOTE_TTL_SECONDS - 30);
+
+        $this->augmentCurrentCart();
+
+        $record = $this->store->load(self::SESSION);
+        self::assertNotNull($record);
+        self::assertEquals($this->clock->now(), $record->quotedAt, 'An offer with seconds left to live was served again.');
+    }
+
     public function testExpiredOfferDropsTheCredentialSignedForIt(): void
     {
         $this->store->capture(self::SESSION, ['paymentPayload' => ['signature' => '0xsig'], 'paymentRequirements' => self::REQUIREMENTS]);

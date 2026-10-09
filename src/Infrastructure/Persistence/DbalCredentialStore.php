@@ -37,25 +37,21 @@ final class DbalCredentialStore implements CredentialStore
         // Offer-first: create the row if absent, otherwise overwrite ONLY the offer column (a
         // wrapper {quotedAmount, quotedCurrency, entry}). Never touches credential/status, so it is
         // disjoint from capture()/invalidateCredential(); never disturbs a settled row (F0).
-        $offer = $this->encode([
-            'quotedAmount' => $quotedAmount,
-            'quotedCurrency' => $quotedCurrency,
-            'quotedAt' => $quotedAt->format(\DATE_ATOM),
-            'entry' => $offeredEntry,
-        ]);
+        $offer = $this->encode((new StoredOffer($offeredEntry, $quotedAmount, $quotedCurrency, $quotedAt))->toArray());
 
         $this->connection->executeStatement(
             'INSERT INTO fd_prism_payment_settlement
                 (checkout_session_id, offered_accepts, status, created_at)
              VALUES (:id, :offer, :pending, :now)
              ON DUPLICATE KEY UPDATE
-                offered_accepts = IF(status = :settled, offered_accepts, :offer),
-                updated_at      = IF(status = :settled, updated_at, :now)',
+                offered_accepts = IF(status IN (:settled, :settling), offered_accepts, :offer),
+                updated_at      = IF(status IN (:settled, :settling), updated_at, :now)',
             [
                 'id' => $sessionId,
                 'offer' => $offer,
                 'pending' => SettlementStatus::PENDING,
                 'settled' => SettlementStatus::SETTLED,
+                'settling' => SettlementStatus::SETTLING,
                 'now' => $this->now(),
             ],
         );
@@ -172,20 +168,7 @@ final class DbalCredentialStore implements CredentialStore
             return null;
         }
 
-        $offeredEntry = null;
-        $quotedAmount = null;
-        $quotedCurrency = null;
-        $quotedAt = null;
-        if (null !== $row['offered_accepts']) {
-            $offer = $this->decode((string) $row['offered_accepts']);
-            $entry = $offer['entry'] ?? null;
-            if (\is_array($entry)) {
-                $offeredEntry = $entry;
-                $quotedAmount = isset($offer['quotedAmount']) ? (string) $offer['quotedAmount'] : null;
-                $quotedCurrency = isset($offer['quotedCurrency']) ? (string) $offer['quotedCurrency'] : null;
-                $quotedAt = $this->quotedAt($offer['quotedAt'] ?? null);
-            }
-        }
+        $offer = null !== $row['offered_accepts'] ? StoredOffer::fromArray($this->decode((string) $row['offered_accepts'])) : null;
 
         return new PrismSettlementRecord(
             checkoutSessionId: $sessionId,
@@ -193,24 +176,13 @@ final class DbalCredentialStore implements CredentialStore
             status: (string) $row['status'],
             transactionHash: null !== $row['transaction_hash'] ? (string) $row['transaction_hash'] : null,
             network: null !== $row['network'] ? (string) $row['network'] : null,
-            offeredEntry: $offeredEntry,
-            quotedAmount: $quotedAmount,
-            quotedCurrency: $quotedCurrency,
+            offeredEntry: $offer?->entry,
+            quotedAmount: $offer?->quotedAmount,
+            quotedCurrency: $offer?->quotedCurrency,
             settledQuoteAmount: null !== $row['settled_quote_amount'] ? (string) $row['settled_quote_amount'] : null,
             settledQuoteCurrency: null !== $row['settled_quote_currency'] ? (string) $row['settled_quote_currency'] : null,
-            quotedAt: $quotedAt,
+            quotedAt: $offer?->quotedAt,
         );
-    }
-
-    private function quotedAt(mixed $value): ?\DateTimeImmutable
-    {
-        if (!\is_string($value)) {
-            return null;
-        }
-
-        $quotedAt = \DateTimeImmutable::createFromFormat(\DATE_ATOM, $value);
-
-        return false === $quotedAt ? null : $quotedAt;
     }
 
     public function markSettled(

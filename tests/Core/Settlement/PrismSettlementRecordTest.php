@@ -116,6 +116,14 @@ final class PrismSettlementRecordTest extends TestCase
         self::assertFalse($record->offerMatchesQuote('12.50', 'USD', self::now()->modify('+600 seconds')));
     }
 
+    public function testOfferAboutToExpireIsNotServedAgain(): void
+    {
+        $record = new PrismSettlementRecord('s', null, SettlementStatus::PENDING, null, null, self::ENTRY, '12.50', 'USD', quotedAt: self::now());
+
+        self::assertTrue($record->offerMatchesQuote('12.50', 'USD', self::now()->modify('+539 seconds')));
+        self::assertFalse($record->offerMatchesQuote('12.50', 'USD', self::now()->modify('+540 seconds')));
+    }
+
     public function testQuoteIsFreshOnlyWithinItsLifetime(): void
     {
         $record = new PrismSettlementRecord('s', null, SettlementStatus::PENDING, null, null, self::ENTRY, '12.50', 'USD', quotedAt: self::now());
@@ -123,7 +131,8 @@ final class PrismSettlementRecordTest extends TestCase
         self::assertTrue($record->quoteFreshAt(self::now()));
         self::assertTrue($record->quoteFreshAt(self::now()->modify('+599 seconds')));
         self::assertFalse($record->quoteFreshAt(self::now()->modify('+600 seconds')));
-        self::assertFalse($record->quoteFreshAt(self::now()->modify('-1 second')));
+        self::assertTrue($record->quoteFreshAt(self::now()->modify('-30 seconds')));
+        self::assertFalse($record->quoteFreshAt(self::now()->modify('-31 seconds')));
     }
 
     public function testQuoteWithoutQuoteTimeIsNeverFresh(): void
