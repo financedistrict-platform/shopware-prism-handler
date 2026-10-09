@@ -70,6 +70,7 @@ final class SessionOwnershipTamperTest extends TestCase
             new SettlementStateMachine(),
             new AcceptsMatcher(),
             $this->clock,
+            new SilentLogger(),
         );
 
         $this->store->recordOffer(self::SESSION, '10.00', 'EUR', [

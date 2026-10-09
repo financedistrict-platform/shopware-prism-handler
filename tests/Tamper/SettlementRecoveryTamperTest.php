@@ -44,6 +44,8 @@ final class SettlementRecoveryTamperTest extends TestCase
 
     private StubPrismGateway $gateway;
 
+    private RecordingLogger $logger;
+
     private PrismCheckoutAdapter $adapter;
 
     protected function setUp(): void
@@ -54,6 +56,7 @@ final class SettlementRecoveryTamperTest extends TestCase
         $this->inner = new OrderPlacingCheckoutAdapter($this->tables);
         $this->stateHandler = new RecordingTransactionStateHandler();
         $this->gateway = new StubPrismGateway();
+        $this->logger = new RecordingLogger();
 
         $this->adapter = new PrismCheckoutAdapter(
             $this->inner,
@@ -67,6 +70,7 @@ final class SettlementRecoveryTamperTest extends TestCase
             new SettlementStateMachine(),
             new AcceptsMatcher(),
             $this->clock,
+            $this->logger,
         );
     }
 
@@ -100,7 +104,7 @@ final class SettlementRecoveryTamperTest extends TestCase
         $this->settleWhilePrismIsUnreachable();
         $this->clock->advance(600);
 
-        $this->adapter->completeCheckoutFromRequest(new CheckoutCompleteRequest(id: self::SESSION), new RequestContext());
+        $this->complete('0xsig');
 
         self::assertSame(2, $this->gateway->settlements);
         self::assertSame(SettlementStatus::SETTLED, $this->store->rows[self::SESSION]['status']);
@@ -120,12 +124,48 @@ final class SettlementRecoveryTamperTest extends TestCase
         self::assertSame(SettlementStatus::SETTLING, $this->store->rows[self::SESSION]['status']);
         self::assertSame(0, $this->tables->orderCount());
         self::assertSame([], $this->stateHandler->paid);
+        self::assertSame('invalid_nonce', $this->logger->errors[1]['context']['reason']);
 
         try {
             $this->adapter->updateCheckout(new CheckoutUpdateRequest(id: self::SESSION, payment: $this->signedInstrument('0xsecond')), new RequestContext());
             self::fail('A second signature was accepted after an unconfirmed payment was declined on retry.');
         } catch (ValidationException) {
         }
+    }
+
+    public function testStaleUnconfirmedPaymentStillUnreachableOnRetryIsRefusedForReview(): void
+    {
+        $this->settleWhilePrismIsUnreachable();
+        $this->clock->advance(600);
+        $this->gateway->settleOutcomes = ['unreachable'];
+
+        $this->expectCompleteRefused();
+
+        self::assertSame(SettlementStatus::SETTLING, $this->store->rows[self::SESSION]['status']);
+        self::assertCount(2, $this->logger->errors);
+        self::assertSame(self::SESSION, $this->logger->errors[1]['context']['checkoutSessionId']);
+    }
+
+    public function testRetryWithAnotherSignatureAfterTheWindowNeverResubmits(): void
+    {
+        $this->settleWhilePrismIsUnreachable();
+        $this->clock->advance(600);
+
+        try {
+            $this->complete('0xsecond');
+            self::fail('A different signature was accepted for an unconfirmed payment.');
+        } catch (ValidationException) {
+        }
+
+        self::assertSame(1, $this->gateway->settlements);
+    }
+
+    public function testUnreachablePrismIsLoggedForTheMerchant(): void
+    {
+        $this->settleWhilePrismIsUnreachable();
+
+        self::assertCount(1, $this->logger->errors);
+        self::assertSame(self::SESSION, $this->logger->errors[0]['context']['checkoutSessionId']);
     }
 
     public function testDeclinedFirstSettleStillLetsTheBuyerSignAgain(): void

@@ -55,6 +55,15 @@ final class PrismHttpClientTest extends TestCase
         self::assertSame('https://prism.example/api/v2/payment/settle', $http->requests[0]['url']);
     }
 
+    public function testSettleBoundsTheWholeRequestDuration(): void
+    {
+        $http = new RecordingHttpClient([['success' => true, 'transaction' => '0xabc', 'network' => 'base']]);
+
+        $this->client($http)->settle(new PrismConfig('https://prism.example', 'key'), ['paymentPayload' => []]);
+
+        self::assertSame(60.0, $http->requests[0]['options']['max_duration']);
+    }
+
     private function client(RecordingHttpClient $http): PrismHttpClient
     {
         return new PrismHttpClient($http, new PrismResponseParser());

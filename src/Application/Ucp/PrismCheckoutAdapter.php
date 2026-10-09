@@ -7,6 +7,7 @@ namespace Fd\PrismPayment\Application\Ucp;
 use Doctrine\DBAL\Connection;
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
+use Fd\PrismPayment\Core\Exception\PrismApiException;
 use Fd\PrismPayment\Core\Payment\AcceptsMatcher;
 use Fd\PrismPayment\Core\Payment\PrismConfig;
 use Fd\PrismPayment\Core\Payment\SettleResult;
@@ -17,6 +18,7 @@ use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
 use Fd\PrismPayment\Core\Settlement\SettlementStateMachine;
 use Fd\PrismPayment\Core\Ucp\InstrumentAcceptance;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStateHandler;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStates;
 use Shopware\Core\Defaults;
@@ -36,7 +38,9 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 {
     private const MAX_CREDENTIAL_BYTES = 8192;
 
-    private const STALE_SETTLEMENT_SECONDS = 120;
+    private const STALE_SETTLEMENT_SECONDS = 180;
+
+    private const UNCONFIRMED_PAYMENT = 'The outcome of this Prism payment could not be confirmed. It is kept for review by the merchant; do not pay again.';
 
     public function __construct(
         private CheckoutAdapterInterface $inner,
@@ -50,6 +54,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         private SettlementStateMachine $stateMachine,
         private AcceptsMatcher $acceptsMatcher,
         private Clock $clock,
+        private LoggerInterface $logger,
     ) {
     }
 
@@ -114,6 +119,10 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         $credential = $this->validateCredential($instrument);
 
         $existing = $this->store->load($request->id);
+        if (null !== $existing && $existing->isSettling() && $existing->credential === $credential) {
+            return $this->completeAuthorized($request->id, $context);
+        }
+
         if (null === $existing || !$existing->isSettled()) {
             if (null !== $existing && !$this->stateMachine->mayCapture($existing->status)) {
                 throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
@@ -168,7 +177,6 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         if ($record->isSettling()) {
-            $this->assertQuoteCoversCart($id, $record, $context);
             $record = $this->resumeStaleSettlement($id, $record, $context);
         } elseif (!$record->isSettled()) {
             $this->assertQuoteCoversCart($id, $record, $context);
@@ -243,12 +251,18 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             );
         }
 
-        $result = $this->client->settle($this->prismConfig($context), $record->credential);
+        try {
+            $result = $this->client->settle($this->prismConfig($context), $record->credential);
+        } catch (PrismApiException $e) {
+            $this->logUnconfirmedPayment($id, $e->getMessage());
+
+            throw new ValidationException(self::UNCONFIRMED_PAYMENT, previous: $e);
+        }
 
         if (!$result->success) {
-            throw new ValidationException(
-                'The outcome of this Prism payment could not be confirmed. It is kept for review by the merchant; do not pay again.',
-            );
+            $this->logUnconfirmedPayment($id, $result->errorReason ?? 'unknown error');
+
+            throw new ValidationException(self::UNCONFIRMED_PAYMENT);
         }
 
         return $this->recordSettlement($id, $record, $result);
@@ -282,7 +296,13 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     {
         \assert(null !== $record->credential);
 
-        $result = $this->client->settle($this->prismConfig($context), $record->credential);
+        try {
+            $result = $this->client->settle($this->prismConfig($context), $record->credential);
+        } catch (PrismApiException $e) {
+            $this->logUnconfirmedPayment($sessionId, $e->getMessage());
+
+            throw $e;
+        }
 
         if (!$result->success) {
             $this->store->markFailed($sessionId);
@@ -317,6 +337,14 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         return $refreshed;
+    }
+
+    private function logUnconfirmedPayment(string $sessionId, string $reason): void
+    {
+        $this->logger->error('Prism payment outcome is unconfirmed; the checkout stays locked until it is reconciled.', [
+            'checkoutSessionId' => $sessionId,
+            'reason' => $reason,
+        ]);
     }
 
     private function prismConfig(RequestContext $context): PrismConfig

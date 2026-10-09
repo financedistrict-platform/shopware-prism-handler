@@ -77,6 +77,7 @@ final readonly class PrismHttpClient implements PrismGateway
                 'Accept' => 'application/json',
             ],
             'timeout' => $timeout,
+            'max_duration' => $timeout,
         ];
         if (null !== $body) {
             $options['json'] = $body;

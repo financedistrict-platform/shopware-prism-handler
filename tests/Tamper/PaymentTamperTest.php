@@ -68,6 +68,7 @@ final class PaymentTamperTest extends TestCase
             new SettlementStateMachine(),
             new AcceptsMatcher(),
             $this->clock,
+            new SilentLogger(),
         );
     }
 
