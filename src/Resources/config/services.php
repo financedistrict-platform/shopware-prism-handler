@@ -8,11 +8,13 @@ use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
 use Fd\PrismPayment\Application\Ucp\HandlerDeclarationProvider;
 use Fd\PrismPayment\Application\Ucp\PrismCheckoutAdapter;
 use Fd\PrismPayment\Application\Ucp\UcpVersionResolver;
+use Fd\PrismPayment\Core\Port\Clock;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
 use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Port\SettlementReadModel;
+use Fd\PrismPayment\Infrastructure\Clock\SystemClock;
 use Fd\PrismPayment\Infrastructure\Config\SystemConfigResolver;
 use Fd\PrismPayment\Infrastructure\Http\HttpHandlerDeclarationSource;
 use Fd\PrismPayment\Infrastructure\Http\PrismHttpClient;
@@ -45,6 +47,7 @@ return static function (ContainerConfigurator $container): void {
     $services->alias(SettlementReadModel::class, DbalSettlementReadModel::class);
     $services->alias(ConfigResolver::class, SystemConfigResolver::class);
     $services->alias(HandlerDeclarationSource::class, HttpHandlerDeclarationSource::class);
+    $services->alias(Clock::class, SystemClock::class);
 
     // Dedicated PSR-6/contracts cache pool (a namespaced child of the app cache) that backs the
     // handler-declaration cache. Using a pool — not an in-process property — is what survives the

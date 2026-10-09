@@ -27,6 +27,8 @@ use Fd\PrismPayment\Core\Payment\MinorUnits;
  */
 final readonly class PrismSettlementRecord
 {
+    public const QUOTE_TTL_SECONDS = 600;
+
     /**
      * @param array<string, mixed>|null $credential   the wallet's whole signed x402 output, verbatim
      * @param array<string, mixed>|null $offeredEntry  the full handler entry {id,version,config} we last offered
@@ -42,6 +44,7 @@ final readonly class PrismSettlementRecord
         public ?string $quotedCurrency = null,
         public ?string $settledQuoteAmount = null,
         public ?string $settledQuoteCurrency = null,
+        public ?\DateTimeImmutable $quotedAt = null,
     ) {
     }
 
@@ -110,11 +113,23 @@ final readonly class PrismSettlementRecord
      * Whether the recorded offer was quoted for exactly this cart (same fiat amount + currency),
      * so it can be reused verbatim instead of re-quoting Prism.
      */
-    public function offerMatchesQuote(string $amount, string $currency): bool
+    public function offerMatchesQuote(string $amount, string $currency, \DateTimeImmutable $now): bool
     {
         return null !== $this->offeredEntry
             && $this->quotedAmount === $amount
-            && $this->quotedCurrency === $currency;
+            && $this->quotedCurrency === $currency
+            && ($this->isLocked() || $this->quoteFreshAt($now));
+    }
+
+    public function quoteFreshAt(\DateTimeImmutable $now): bool
+    {
+        if (null === $this->quotedAt) {
+            return false;
+        }
+
+        $age = $now->getTimestamp() - $this->quotedAt->getTimestamp();
+
+        return $age >= 0 && $age < self::QUOTE_TTL_SECONDS;
     }
 
     public function isSettled(): bool
@@ -125,5 +140,10 @@ final readonly class PrismSettlementRecord
     public function isFailed(): bool
     {
         return SettlementStatus::FAILED === $this->status;
+    }
+
+    private function isLocked(): bool
+    {
+        return SettlementStatus::SETTLED === $this->status || SettlementStatus::SETTLING === $this->status;
     }
 }

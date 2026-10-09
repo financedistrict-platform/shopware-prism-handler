@@ -13,7 +13,7 @@ final class InMemorySettlementStore implements CredentialStore
     /** @var array<string, array<string, mixed>> */
     public array $rows = [];
 
-    public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry): void
+    public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry, \DateTimeImmutable $quotedAt): void
     {
         $row = $this->rows[$sessionId] ?? $this->emptyRow();
         if (SettlementStatus::SETTLED === $row['status']) {
@@ -23,6 +23,7 @@ final class InMemorySettlementStore implements CredentialStore
         $row['offeredEntry'] = $offeredEntry;
         $row['quotedAmount'] = $quotedAmount;
         $row['quotedCurrency'] = $quotedCurrency;
+        $row['quotedAt'] = $quotedAt;
         $this->rows[$sessionId] = $row;
     }
 
@@ -45,6 +46,7 @@ final class InMemorySettlementStore implements CredentialStore
         $this->rows[$sessionId]['offeredEntry'] = null;
         $this->rows[$sessionId]['quotedAmount'] = null;
         $this->rows[$sessionId]['quotedCurrency'] = null;
+        $this->rows[$sessionId]['quotedAt'] = null;
     }
 
     public function releaseToBase(string $sessionId): void
@@ -98,6 +100,7 @@ final class InMemorySettlementStore implements CredentialStore
             quotedCurrency: $row['quotedCurrency'],
             settledQuoteAmount: $row['settledQuoteAmount'],
             settledQuoteCurrency: $row['settledQuoteCurrency'],
+            quotedAt: $row['quotedAt'],
         );
     }
 
@@ -142,6 +145,7 @@ final class InMemorySettlementStore implements CredentialStore
             'offeredEntry' => null,
             'quotedAmount' => null,
             'quotedCurrency' => null,
+            'quotedAt' => null,
             'settledQuoteAmount' => null,
             'settledQuoteCurrency' => null,
             'orderId' => null,

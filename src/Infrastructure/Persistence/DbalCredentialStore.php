@@ -32,7 +32,7 @@ final class DbalCredentialStore implements CredentialStore
     ) {
     }
 
-    public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry): void
+    public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry, \DateTimeImmutable $quotedAt): void
     {
         // Offer-first: create the row if absent, otherwise overwrite ONLY the offer column (a
         // wrapper {quotedAmount, quotedCurrency, entry}). Never touches credential/status, so it is
@@ -40,6 +40,7 @@ final class DbalCredentialStore implements CredentialStore
         $offer = $this->encode([
             'quotedAmount' => $quotedAmount,
             'quotedCurrency' => $quotedCurrency,
+            'quotedAt' => $quotedAt->format(\DATE_ATOM),
             'entry' => $offeredEntry,
         ]);
 
@@ -174,6 +175,7 @@ final class DbalCredentialStore implements CredentialStore
         $offeredEntry = null;
         $quotedAmount = null;
         $quotedCurrency = null;
+        $quotedAt = null;
         if (null !== $row['offered_accepts']) {
             $offer = $this->decode((string) $row['offered_accepts']);
             $entry = $offer['entry'] ?? null;
@@ -181,6 +183,7 @@ final class DbalCredentialStore implements CredentialStore
                 $offeredEntry = $entry;
                 $quotedAmount = isset($offer['quotedAmount']) ? (string) $offer['quotedAmount'] : null;
                 $quotedCurrency = isset($offer['quotedCurrency']) ? (string) $offer['quotedCurrency'] : null;
+                $quotedAt = $this->quotedAt($offer['quotedAt'] ?? null);
             }
         }
 
@@ -195,7 +198,19 @@ final class DbalCredentialStore implements CredentialStore
             quotedCurrency: $quotedCurrency,
             settledQuoteAmount: null !== $row['settled_quote_amount'] ? (string) $row['settled_quote_amount'] : null,
             settledQuoteCurrency: null !== $row['settled_quote_currency'] ? (string) $row['settled_quote_currency'] : null,
+            quotedAt: $quotedAt,
         );
+    }
+
+    private function quotedAt(mixed $value): ?\DateTimeImmutable
+    {
+        if (!\is_string($value)) {
+            return null;
+        }
+
+        $quotedAt = \DateTimeImmutable::createFromFormat(\DATE_ATOM, $value);
+
+        return false === $quotedAt ? null : $quotedAt;
     }
 
     public function markSettled(

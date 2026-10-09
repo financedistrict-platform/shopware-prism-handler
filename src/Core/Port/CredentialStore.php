@@ -21,7 +21,7 @@ interface CredentialStore
      *
      * @param array<string, mixed> $offeredEntry the full handler entry {id,version,config}
      */
-    public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry): void;
+    public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry, \DateTimeImmutable $quotedAt): void;
 
     /**
      * Invalidate the captured Prism credential because the cart amount changed after it was signed

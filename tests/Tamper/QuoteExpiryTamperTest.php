@@ -7,10 +7,13 @@ namespace Fd\PrismPayment\Tests\Tamper;
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Application\Ucp\HandlerDeclarationProvider;
 use Fd\PrismPayment\Application\Ucp\PrismCheckoutAdapter;
+use Fd\PrismPayment\Application\Ucp\PrismPaymentHandler;
 use Fd\PrismPayment\Application\Ucp\PrismRequirementsAugmenter;
 use Fd\PrismPayment\Application\Ucp\UcpVersionResolver;
 use Fd\PrismPayment\Core\Payment\AcceptsMatcher;
+use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
 use Fd\PrismPayment\Core\Settlement\SettlementStateMachine;
+use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Core\Ucp\HandlerId;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -22,11 +25,11 @@ use Ucp\Sdk\Model\Checkout\PaymentInstrument;
 use Ucp\Sdk\Model\Config\RuntimeConfiguration;
 use Ucp\Sdk\Model\RequestContext;
 
-final class RequoteTamperTest extends TestCase
+final class QuoteExpiryTamperTest extends TestCase
 {
     private const SESSION = 'session-1';
 
-    private const CHEAP_CART_REQUIREMENTS = [
+    private const REQUIREMENTS = [
         'scheme' => 'exact',
         'network' => 'base',
         'asset' => '0xusdc',
@@ -38,11 +41,11 @@ final class RequoteTamperTest extends TestCase
 
     private FrozenClock $clock;
 
-    private OrderPlacingCheckoutAdapter $inner;
-
     private RecordingTransactionStateHandler $stateHandler;
 
     private StubPrismGateway $gateway;
+
+    private OrderPlacingCheckoutAdapter $inner;
 
     private PrismRequirementsAugmenter $augmenter;
 
@@ -91,66 +94,120 @@ final class RequoteTamperTest extends TestCase
 
         $this->store->recordOffer(self::SESSION, '10.00', 'EUR', [
             'id' => HandlerId::PRISM,
-            'config' => ['accepts' => [self::CHEAP_CART_REQUIREMENTS]],
+            'config' => ['accepts' => [self::REQUIREMENTS]],
         ], $this->clock->now());
     }
 
-    public function testFailedRequoteWithdrawsTheOfferForTheOldCart(): void
+    public function testExpiredQuoteIsRefusedBeforeSettlement(): void
     {
-        $this->inner->cartTotal = '500.00';
+        $this->clock->advance(PrismSettlementRecord::QUOTE_TTL_SECONDS + 1);
+
+        $this->expectCompleteRefused();
+    }
+
+    public function testQuoteHeldForHoursIsRefusedBeforeSettlement(): void
+    {
+        $this->clock->advance(6 * 3600);
+
+        $this->expectCompleteRefused();
+    }
+
+    public function testQuoteWithoutQuoteTimeIsRefusedBeforeSettlement(): void
+    {
+        $this->store->rows[self::SESSION]['quotedAt'] = null;
+
+        $this->expectCompleteRefused();
+    }
+
+    public function testQuoteStillWithinItsLifetimeSettles(): void
+    {
+        $this->clock->advance(PrismSettlementRecord::QUOTE_TTL_SECONDS - 1);
+
+        $this->completeWithSignature();
+
+        self::assertSame(1, $this->gateway->settlements);
+        self::assertCount(1, $this->stateHandler->paid);
+    }
+
+    public function testExpiredOfferIsRequotedInsteadOfServedAgain(): void
+    {
+        $this->clock->advance(PrismSettlementRecord::QUOTE_TTL_SECONDS + 1);
+
+        $this->augmentCurrentCart();
+
+        $record = $this->store->load(self::SESSION);
+        self::assertNotNull($record);
+        self::assertEquals($this->clock->now(), $record->quotedAt, 'An expired offer was served again instead of re-quoted.');
+    }
+
+    public function testExpiredOfferDropsTheCredentialSignedForIt(): void
+    {
+        $this->store->capture(self::SESSION, ['paymentPayload' => ['signature' => '0xsig'], 'paymentRequirements' => self::REQUIREMENTS]);
+        $this->clock->advance(PrismSettlementRecord::QUOTE_TTL_SECONDS + 1);
+
+        $this->augmentCurrentCart();
+
+        $record = $this->store->load(self::SESSION);
+        self::assertNotNull($record);
+        self::assertFalse($record->hasCredential(), 'A credential signed for an expired offer survived the re-quote.');
+        self::assertSame(SettlementStatus::FAILED, $record->status);
+    }
+
+    public function testExpiredOfferIsWithdrawnWhenPrismCannotRequote(): void
+    {
+        $this->clock->advance(PrismSettlementRecord::QUOTE_TTL_SECONDS + 1);
         $this->gateway->requirementsUnavailable = true;
 
         $this->augmentCurrentCart();
 
         $record = $this->store->load(self::SESSION);
         self::assertNotNull($record);
-        self::assertNull($record->offeredAccepts(), 'The offer for the old cart survived a failed re-quote.');
+        self::assertNull($record->offeredAccepts(), 'An expired offer stayed on the session after a failed re-quote.');
     }
 
-    public function testOldCartOfferNeverSettlesABiggerCartAfterFailedRequote(): void
+    public function testSettledSessionKeepsServingTheOfferItSettledAfterExpiry(): void
     {
-        $this->inner->cartTotal = '500.00';
-        $this->gateway->requirementsUnavailable = true;
-        $this->augmentCurrentCart();
+        $this->store->rows[self::SESSION]['status'] = SettlementStatus::SETTLED;
+        $this->clock->advance(PrismSettlementRecord::QUOTE_TTL_SECONDS + 1);
 
-        try {
-            $this->completeWithCheapCartSignature();
-            self::fail('A bigger cart was completed with the old cart offer.');
-        } catch (ValidationException) {
-        }
+        $checkout = $this->augmentCurrentCart();
 
-        self::assertSame(0, $this->gateway->settlements);
-        self::assertSame([], $this->stateHandler->paid);
+        self::assertSame(
+            [['id' => HandlerId::PRISM, 'config' => ['accepts' => [self::REQUIREMENTS]]]],
+            $checkout->extra['payment_handlers'][PrismPaymentHandler::HANDLER_ID] ?? null,
+            'A settled session advertised a new offer that is not on record.',
+        );
     }
 
-    public function testUnchangedCartKeepsItsOfferWhilePrismIsDown(): void
+    private function augmentCurrentCart(): Checkout
     {
-        $this->gateway->requirementsUnavailable = true;
-        $this->augmentCurrentCart();
-
-        $this->completeWithCheapCartSignature();
-
-        self::assertSame(1, $this->gateway->settlements);
-        self::assertCount(1, $this->stateHandler->paid);
-    }
-
-    private function augmentCurrentCart(): void
-    {
-        $this->augmenter->augment(
+        return $this->augmenter->augment(
             new Checkout(id: self::SESSION, currency: $this->inner->cartCurrency, totals: $this->inner->totals()),
             new RequestContext(),
         );
     }
 
-    private function completeWithCheapCartSignature(): void
+    private function completeWithSignature(): void
     {
         $this->adapter->completeCheckoutFromRequest(
             new CheckoutCompleteRequest(id: self::SESSION, instruments: [new PaymentInstrument(
                 handlerId: HandlerId::PRISM,
                 type: 'x402',
-                credential: ['paymentPayload' => ['signature' => '0xsig'], 'paymentRequirements' => self::CHEAP_CART_REQUIREMENTS],
+                credential: ['paymentPayload' => ['signature' => '0xsig'], 'paymentRequirements' => self::REQUIREMENTS],
             )]),
             new RequestContext(),
         );
+    }
+
+    private function expectCompleteRefused(): void
+    {
+        try {
+            $this->completeWithSignature();
+            self::fail('A checkout settled against an expired quote.');
+        } catch (ValidationException) {
+        }
+
+        self::assertSame(0, $this->gateway->settlements);
+        self::assertSame([], $this->stateHandler->paid);
     }
 }

@@ -6,6 +6,7 @@ namespace Fd\PrismPayment\Application\Ucp;
 
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Core\Exception\PrismApiException;
+use Fd\PrismPayment\Core\Port\Clock;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\PrismGateway;
@@ -29,6 +30,7 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         private CredentialStore $credentialStore,
         private LoggerInterface $logger,
         private HandlerDeclarationProvider $declarations,
+        private Clock $clock,
     ) {
     }
 
@@ -51,7 +53,7 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         $currency = $checkout->currency;
 
         $existing = $this->credentialStore->load($checkout->id);
-        if (null !== $existing && $existing->offerMatchesQuote($fiatAmount, $currency)) {
+        if (null !== $existing && $existing->offerMatchesQuote($fiatAmount, $currency, $this->clock->now())) {
             $entry = $existing->offeredEntry;
             \assert(\is_array($entry));
         } else {
@@ -90,7 +92,7 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
 
             $entry = PrismCheckoutEntry::compose($declaration, $config);
 
-            $this->credentialStore->recordOffer($checkout->id, $fiatAmount, $currency, $entry);
+            $this->credentialStore->recordOffer($checkout->id, $fiatAmount, $currency, $entry, $this->clock->now());
         }
 
         $extra = $checkout->extra;

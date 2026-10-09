@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Core\Payment\AcceptsMatcher;
+use Fd\PrismPayment\Core\Port\Clock;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\PrismGateway;
@@ -44,6 +45,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         private Connection $connection,
         private SettlementStateMachine $stateMachine,
         private AcceptsMatcher $acceptsMatcher,
+        private Clock $clock,
     ) {
     }
 
@@ -136,6 +138,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
         if (!$record->isSettled()) {
             $this->assertQuoteCoversCart($id, $record, $context);
+            $this->assertQuoteStillValid($record);
             $record = $this->settleOnce($id, $record, $context);
         }
 
@@ -153,6 +156,15 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         if (null === $total || !$record->quotedFor((string) $total, $cart->currency)) {
             throw new ValidationException(
                 'The cart changed after this Prism payment was quoted. Fetch the checkout again and submit a new payment.',
+            );
+        }
+    }
+
+    private function assertQuoteStillValid(PrismSettlementRecord $record): void
+    {
+        if (!$record->quoteFreshAt($this->clock->now())) {
+            throw new ValidationException(
+                'This Prism payment quote has expired. Fetch the checkout again and submit a new payment.',
             );
         }
     }

@@ -166,6 +166,28 @@ final class DbalCredentialStoreTest extends TestCase
         self::assertSame('10.00', $record->quotedAmount);
     }
 
+    public function testLoadReadsTheQuoteTimeOfTheOffer(): void
+    {
+        $this->seed(SettlementStatus::PENDING);
+        $this->pdo->prepare('UPDATE fd_prism_payment_settlement SET offered_accepts = :offer')->execute([
+            'offer' => '{"quotedAmount":"10.00","quotedCurrency":"EUR","quotedAt":"2026-10-09T10:00:00+00:00","entry":{"config":{"accepts":[]}}}',
+        ]);
+
+        $record = $this->store->load(self::SESSION_ID);
+        self::assertNotNull($record);
+        self::assertEquals(new \DateTimeImmutable('2026-10-09T10:00:00+00:00'), $record->quotedAt);
+    }
+
+    public function testOfferWithoutReadableQuoteTimeLoadsWithoutOne(): void
+    {
+        $this->seedWithOffer(SettlementStatus::PENDING);
+
+        $record = $this->store->load(self::SESSION_ID);
+        self::assertNotNull($record);
+        self::assertNull($record->quotedAt);
+        self::assertFalse($record->quoteFreshAt(new \DateTimeImmutable()));
+    }
+
     private function seedWithOffer(string $status): void
     {
         $this->seed($status);

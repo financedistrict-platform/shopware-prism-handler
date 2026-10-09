@@ -35,6 +35,8 @@ final class PaymentTamperTest extends TestCase
 
     private InMemorySettlementStore $store;
 
+    private FrozenClock $clock;
+
     private ShopwareOrderTables $tables;
 
     private OrderPlacingCheckoutAdapter $inner;
@@ -48,6 +50,7 @@ final class PaymentTamperTest extends TestCase
     protected function setUp(): void
     {
         $this->store = new InMemorySettlementStore();
+        $this->clock = new FrozenClock();
         $this->tables = new ShopwareOrderTables();
         $this->inner = new OrderPlacingCheckoutAdapter($this->tables);
         $this->stateHandler = new RecordingTransactionStateHandler();
@@ -64,6 +67,7 @@ final class PaymentTamperTest extends TestCase
             $this->tables->connection(),
             new SettlementStateMachine(),
             new AcceptsMatcher(),
+            $this->clock,
         );
     }
 
@@ -210,14 +214,14 @@ final class PaymentTamperTest extends TestCase
 
     public function testQuoteWithoutAmountIsRefusedBeforeSettlement(): void
     {
-        $this->store->recordOffer(self::SESSION, '', 'EUR', $this->cheapCartOffer());
+        $this->store->recordOffer(self::SESSION, '', 'EUR', $this->cheapCartOffer(), $this->clock->now());
 
         $this->expectSettlementRefused();
     }
 
     public function testUnchangedCartSettlesAndIsMarkedPaid(): void
     {
-        $this->store->recordOffer(self::SESSION, '10.00', 'EUR', $this->cheapCartOffer());
+        $this->store->recordOffer(self::SESSION, '10.00', 'EUR', $this->cheapCartOffer(), $this->clock->now());
 
         $this->completeWithCheapCartSignature();
 
@@ -274,7 +278,7 @@ final class PaymentTamperTest extends TestCase
         $this->store->recordOffer(self::SESSION, '10.00', 'EUR', [
             'id' => HandlerId::PRISM,
             'config' => ['accepts' => [self::REQUIREMENTS]],
-        ]);
+        ], $this->clock->now());
         $this->inner->failingPlacements = 1;
 
         try {
@@ -297,7 +301,7 @@ final class PaymentTamperTest extends TestCase
     private function expectSettlementRefused(): void
     {
         if (null === $this->store->load(self::SESSION)) {
-            $this->store->recordOffer(self::SESSION, '10.00', 'EUR', $this->cheapCartOffer());
+            $this->store->recordOffer(self::SESSION, '10.00', 'EUR', $this->cheapCartOffer(), $this->clock->now());
         }
 
         try {

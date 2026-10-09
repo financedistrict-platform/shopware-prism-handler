@@ -84,18 +84,18 @@ final class PrismSettlementRecordTest extends TestCase
 
     public function testOfferMatchesQuoteOnlyForSameAmountAndCurrency(): void
     {
-        $record = new PrismSettlementRecord('s', null, SettlementStatus::PENDING, null, null, self::ENTRY, '12.50', 'USD');
+        $record = new PrismSettlementRecord('s', null, SettlementStatus::PENDING, null, null, self::ENTRY, '12.50', 'USD', quotedAt: self::now());
 
-        self::assertTrue($record->offerMatchesQuote('12.50', 'USD'));
-        self::assertFalse($record->offerMatchesQuote('25.00', 'USD'), 'a changed amount must re-quote');
-        self::assertFalse($record->offerMatchesQuote('12.50', 'EUR'), 'a changed currency must re-quote');
+        self::assertTrue($record->offerMatchesQuote('12.50', 'USD', self::now()));
+        self::assertFalse($record->offerMatchesQuote('25.00', 'USD', self::now()), 'a changed amount must re-quote');
+        self::assertFalse($record->offerMatchesQuote('12.50', 'EUR', self::now()), 'a changed currency must re-quote');
     }
 
     public function testOfferMatchesQuoteFalseWhenNoOffer(): void
     {
         $record = new PrismSettlementRecord('s', null, SettlementStatus::PENDING, null, null);
 
-        self::assertFalse($record->offerMatchesQuote('12.50', 'USD'));
+        self::assertFalse($record->offerMatchesQuote('12.50', 'USD', self::now()));
     }
 
     public function testSettledAndFailedFlags(): void
@@ -107,5 +107,34 @@ final class PrismSettlementRecordTest extends TestCase
         $failed = new PrismSettlementRecord('s', self::CREDENTIAL, SettlementStatus::FAILED, null, null);
         self::assertTrue($failed->isFailed());
         self::assertFalse($failed->isSettled());
+    }
+
+    public function testOfferMatchesQuoteFalseOnceTheQuoteExpired(): void
+    {
+        $record = new PrismSettlementRecord('s', null, SettlementStatus::PENDING, null, null, self::ENTRY, '12.50', 'USD', quotedAt: self::now());
+
+        self::assertFalse($record->offerMatchesQuote('12.50', 'USD', self::now()->modify('+600 seconds')));
+    }
+
+    public function testQuoteIsFreshOnlyWithinItsLifetime(): void
+    {
+        $record = new PrismSettlementRecord('s', null, SettlementStatus::PENDING, null, null, self::ENTRY, '12.50', 'USD', quotedAt: self::now());
+
+        self::assertTrue($record->quoteFreshAt(self::now()));
+        self::assertTrue($record->quoteFreshAt(self::now()->modify('+599 seconds')));
+        self::assertFalse($record->quoteFreshAt(self::now()->modify('+600 seconds')));
+        self::assertFalse($record->quoteFreshAt(self::now()->modify('-1 second')));
+    }
+
+    public function testQuoteWithoutQuoteTimeIsNeverFresh(): void
+    {
+        $record = new PrismSettlementRecord('s', null, SettlementStatus::PENDING, null, null, self::ENTRY, '12.50', 'USD');
+
+        self::assertFalse($record->quoteFreshAt(self::now()));
+    }
+
+    private static function now(): \DateTimeImmutable
+    {
+        return new \DateTimeImmutable('2026-10-09T10:00:00+00:00');
     }
 }
