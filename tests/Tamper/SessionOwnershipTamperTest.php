@@ -13,6 +13,7 @@ use Fd\PrismPayment\Core\Ucp\HandlerId;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Swag\AgenticCommerce\Ucp\SalesChannel\SalesChannelDomainResolver;
+use Ucp\Sdk\Exception\ValidationException;
 use Ucp\Sdk\Model\Checkout\CheckoutCompleteRequest;
 use Ucp\Sdk\Model\Checkout\CheckoutUpdateRequest;
 use Ucp\Sdk\Model\Checkout\PaymentInstrument;
@@ -148,6 +149,46 @@ final class SessionOwnershipTamperTest extends TestCase
         $this->assertOwnerCredentialUntouched();
     }
 
+    public function testUnknownSessionTheBaseLetsThroughCannotCaptureOnUpdate(): void
+    {
+        $this->inner->foreignSessions = [];
+
+        $this->expectNoOffer(fn () => $this->adapter->updateCheckout(
+            new CheckoutUpdateRequest(id: 'session-unknown', payment: $this->prismInstrument()),
+            new RequestContext(),
+        ));
+
+        self::assertNull($this->store->load('session-unknown'));
+    }
+
+    public function testUnknownSessionTheBaseLetsThroughCannotCaptureOnComplete(): void
+    {
+        $this->inner->foreignSessions = [];
+
+        $this->expectNoOffer(fn () => $this->adapter->completeCheckoutFromRequest(
+            new CheckoutCompleteRequest(id: 'session-unknown', instruments: [$this->prismInstrument()]),
+            new RequestContext(),
+        ));
+
+        self::assertNull($this->store->load('session-unknown'));
+        self::assertSame(0, $this->gateway->settlements);
+        self::assertSame(0, $this->tables->orderCount());
+    }
+
+    public function testWithdrawnOfferCannotBeAnsweredWithANewCredential(): void
+    {
+        $this->inner->foreignSessions = [];
+        $this->store->releaseToBase(self::SESSION);
+        $this->store->withdrawOffer(self::SESSION);
+
+        $this->expectNoOffer(fn () => $this->adapter->updateCheckout(
+            new CheckoutUpdateRequest(id: self::SESSION, payment: $this->prismInstrument()),
+            new RequestContext(),
+        ));
+
+        self::assertNull($this->store->rows[self::SESSION]['credential']);
+    }
+
     public function testOwnerStillSettlesAndIsMarkedPaid(): void
     {
         $this->inner->foreignSessions = [];
@@ -170,9 +211,19 @@ final class SessionOwnershipTamperTest extends TestCase
     {
         try {
             $action();
-            self::fail('A session action ran for a checkout the caller does not own.');
+            self::fail('A session action touched the Prism payment before the base adapter authorized the session.');
         } catch (\RuntimeException $e) {
             self::assertSame('Checkout session not found.', $e->getMessage());
+        }
+    }
+
+    private function expectNoOffer(\Closure $action): void
+    {
+        try {
+            $action();
+            self::fail('A credential was captured for a checkout without a Prism offer.');
+        } catch (ValidationException $e) {
+            self::assertStringContainsString('no Prism payment offer', $e->getMessage());
         }
     }
 

@@ -86,6 +86,11 @@ final readonly class PrismSettlementRecord
         return null !== $this->credential;
     }
 
+    public function hasOffer(): bool
+    {
+        return null !== $this->offeredAccepts();
+    }
+
     /**
      * The x402 `paymentRequirements` the wallet chose and signed, read out of the credential for the
      * F2 anti-scam match against what we offered. This is the one field the plugin reads from inside

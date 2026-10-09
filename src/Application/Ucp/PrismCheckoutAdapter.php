@@ -70,7 +70,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
         $payment = $request->payment;
         if (null !== $payment && InstrumentAcceptance::isPrismHandler($payment->handlerId)) {
-            $this->store->capture($request->id, $this->validateCredential($payment));
+            $this->captureAgainstOffer($request->id, $existing, $this->validateCredential($payment));
         } elseif (null !== $payment) {
             $this->store->releaseToBase($request->id);
         }
@@ -115,7 +115,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
                 throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
             }
 
-            $this->store->capture($request->id, $credential);
+            $this->captureAgainstOffer($request->id, $existing, $credential);
         }
 
         return $this->completeAuthorized($request->id, $context);
@@ -131,6 +131,17 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     private function authorizeSession(string $id, RequestContext $context): void
     {
         $this->inner->getCheckout($id, $context);
+    }
+
+    private function captureAgainstOffer(string $id, ?PrismSettlementRecord $existing, array $credential): void
+    {
+        if (null === $existing || !$existing->hasOffer()) {
+            throw new ValidationException(
+                'This checkout has no Prism payment offer to pay. Fetch the checkout first and sign one of its offers.',
+            );
+        }
+
+        $this->store->capture($id, $credential);
     }
 
     private function completeAuthorized(string $id, RequestContext $context): Checkout
