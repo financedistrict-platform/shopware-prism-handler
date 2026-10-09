@@ -23,6 +23,8 @@ final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
 
     public int $failingPlacements = 0;
 
+    public array $foreignSessions = [];
+
     private int $orders = 0;
 
     public function __construct(
@@ -37,11 +39,15 @@ final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
 
     public function getCheckout(string $id, RequestContext $context): Checkout
     {
+        $this->authorize($id);
+
         return new Checkout(id: $id, currency: $this->cartCurrency, totals: $this->totals());
     }
 
     public function updateCheckout(CheckoutUpdateRequest $request, RequestContext $context): Checkout
     {
+        $this->authorize($request->id);
+
         if (null !== $this->cartTotalOnUpdate) {
             $this->cartTotal = $this->cartTotalOnUpdate;
         }
@@ -51,6 +57,8 @@ final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
 
     public function completeCheckout(string $id, RequestContext $context): Checkout
     {
+        $this->authorize($id);
+
         if ($this->failingPlacements > 0) {
             --$this->failingPlacements;
 
@@ -65,6 +73,8 @@ final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
 
     public function cancelCheckout(string $id, RequestContext $context): Checkout
     {
+        $this->authorize($id);
+
         return new Checkout(id: $id);
     }
 
@@ -73,5 +83,12 @@ final class OrderPlacingCheckoutAdapter implements CheckoutAdapterInterface
         return $this->cartHasTotal
             ? [new Money('subtotal', (float) $this->cartTotal), new Money('total', (float) $this->cartTotal)]
             : [new Money('subtotal', (float) $this->cartTotal)];
+    }
+
+    private function authorize(string $id): void
+    {
+        if (\in_array($id, $this->foreignSessions, true)) {
+            throw new \RuntimeException('Checkout session not found.');
+        }
     }
 }

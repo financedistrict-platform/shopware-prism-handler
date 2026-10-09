@@ -61,6 +61,8 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
     public function updateCheckout(CheckoutUpdateRequest $request, RequestContext $context): Checkout
     {
+        $this->authorizeSession($request->id, $context);
+
         $existing = $this->store->load($request->id);
         if (null !== $existing && !$this->stateMachine->mayChangeCart($existing->status)) {
             throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
@@ -78,11 +80,13 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
     public function completeCheckoutFromRequest(CheckoutCompleteRequest $request, RequestContext $context): Checkout
     {
+        $this->authorizeSession($request->id, $context);
+
         $instrument = $this->prismInstrument($request->instruments);
 
         if (null === $instrument) {
             if ([] === $request->instruments) {
-                return $this->completeCheckout($request->id, $context);
+                return $this->completeAuthorized($request->id, $context);
             }
 
             $existing = $this->store->load($request->id);
@@ -114,10 +118,22 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             $this->store->capture($request->id, $credential);
         }
 
-        return $this->completeCheckout($request->id, $context);
+        return $this->completeAuthorized($request->id, $context);
     }
 
     public function completeCheckout(string $id, RequestContext $context): Checkout
+    {
+        $this->authorizeSession($id, $context);
+
+        return $this->completeAuthorized($id, $context);
+    }
+
+    private function authorizeSession(string $id, RequestContext $context): void
+    {
+        $this->inner->getCheckout($id, $context);
+    }
+
+    private function completeAuthorized(string $id, RequestContext $context): Checkout
     {
         $record = $this->store->load($id);
 
@@ -201,6 +217,8 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
     public function cancelCheckout(string $id, RequestContext $context): Checkout
     {
+        $this->authorizeSession($id, $context);
+
         $record = $this->store->load($id);
         if (null !== $record && $record->isSettled()) {
             throw new ValidationException(
