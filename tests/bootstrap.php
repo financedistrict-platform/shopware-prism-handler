@@ -24,6 +24,7 @@ spl_autoload_register(static function (string $class): void {
         'Fd\\PrismPayment\\' => __DIR__ . '/../src/',
         'Ucp\\Sdk\\' => __DIR__ . '/Support/Ucp/Sdk/',
         'Shopware\\Core\\' => __DIR__ . '/Support/Shopware/Core/',
+        'Swag\\AgenticCommerce\\' => __DIR__ . '/Support/Swag/AgenticCommerce/',
         'Doctrine\\DBAL\\' => __DIR__ . '/Support/Doctrine/DBAL/',
         'Symfony\\Contracts\\HttpClient\\' => __DIR__ . '/Support/Symfony/HttpClient/',
     ];

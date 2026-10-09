@@ -32,6 +32,15 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 {
     private const MAX_CREDENTIAL_BYTES = 8192;
 
+    /** Transaction states in which Shopware is still waiting for the payment to arrive. */
+    private const AWAITING_PAYMENT = [
+        OrderTransactionStates::STATE_OPEN,
+        OrderTransactionStates::STATE_IN_PROGRESS,
+        OrderTransactionStates::STATE_AUTHORIZED,
+        OrderTransactionStates::STATE_UNCONFIRMED,
+        OrderTransactionStates::STATE_REMINDED,
+    ];
+
     public function __construct(
         private CheckoutAdapterInterface $inner,
         private CredentialStore $store,
@@ -110,6 +119,12 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         return $this->completeCheckout($request->id, $context);
     }
 
+    /**
+     * The order comes first. Whether a session can become an order is Shopware's call, so the base
+     * places it before any money moves: a rejection settles nothing, and once the order exists the
+     * base refuses further cart changes. The payment then follows Shopware's own transaction
+     * lifecycle (open → in_progress → paid, or failed).
+     */
     public function completeCheckout(string $id, RequestContext $context): Checkout
     {
         $record = $this->store->load($id);
@@ -130,41 +145,37 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         if (!$record->isSettled()) {
-            $record = $this->settleOnce($id, $record, $context);
+            $this->assertCredentialOffered($record);
+            $this->assertCartStillMatchesQuote($id, $record, $context);
         }
 
         $checkout = $this->inner->completeCheckout($id, $context);
-        $this->markOrderPaid($checkout, $record);
+        $transaction = $this->transaction($checkout);
 
-        return $checkout;
-    }
-
-    private function settleOnce(string $id, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
-    {
-        $offered = $record->offeredAccepts();
-        $submitted = $record->submittedPaymentRequirements();
-        if (null === $offered
-            || null === $submitted
-            || !$this->acceptsMatcher->matches($offered, $submitted)
-        ) {
-            throw new ValidationException(
-                'The submitted payment does not match any offer issued for this checkout.',
-            );
+        if (OrderTransactionStates::STATE_PAID === $transaction['state']) {
+            return $checkout;
         }
 
-        if (!$this->store->claim($id)) {
-            $current = $this->store->load($id);
-            if (null !== $current && $current->isSettled()) {
-                return $current;
+        $this->assertOrderMatchesQuote($checkout, $record, $transaction);
+        $this->store->linkOrder($id, $transaction['orderId']);
+
+        if (!$record->isSettled()) {
+            if (OrderTransactionStates::STATE_OPEN === $transaction['state']) {
+                $this->transactionStateHandler->process($transaction['id'], Context::createDefaultContext());
             }
 
-            throw new \RuntimeException(sprintf(
-                'Settlement for checkout %s is already in progress; not settling again.',
-                $id,
-            ));
+            try {
+                $record = $this->settleOnce($id, $record, $context);
+            } catch (ValidationException $e) {
+                $this->abandon($transaction);
+
+                throw $e;
+            }
         }
 
-        return $this->settle($id, $record, $context);
+        $this->markPaid($transaction);
+
+        return $checkout;
     }
 
     public function cancelCheckout(string $id, RequestContext $context): Checkout
@@ -187,6 +198,77 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         return $this->inner->cancelCheckout($id, $context);
+    }
+
+    /** F2: the submitted payment requirements must be one of the accepts we offered for this session. */
+    private function assertCredentialOffered(PrismSettlementRecord $record): void
+    {
+        $offered = $record->offeredAccepts();
+        $submitted = $record->submittedPaymentRequirements();
+        if (null === $offered
+            || null === $submitted
+            || !$this->acceptsMatcher->matches($offered, $submitted)
+        ) {
+            throw new ValidationException(
+                'The submitted payment does not match any offer issued for this checkout.',
+            );
+        }
+    }
+
+    /**
+     * The cart must still be the one the payment was quoted for. Read-only, and before the order is
+     * placed, so a stale authorization costs nothing: no order is created and the session stays open
+     * for a fresh quote. The authoritative check is {@see assertOrderMatchesQuote} — Shopware
+     * recalculates when it builds the order, so this one can agree and that one still disagree.
+     */
+    private function assertCartStillMatchesQuote(string $id, PrismSettlementRecord $record, RequestContext $context): void
+    {
+        $cart = $this->inner->getCheckout($id, $context);
+        $total = CheckoutTotal::fiat($cart);
+
+        if (null === $total || !$record->offerMatchesQuote($total, $cart->currency)) {
+            throw new ValidationException(
+                'The cart changed after this payment was authorized. '
+                . 'Request a fresh quote and submit a new payment.',
+            );
+        }
+    }
+
+    /**
+     * The order Shopware placed must be the one the payment was quoted for: same fiat total, same
+     * currency. Anything else is a cart the signature does not cover.
+     *
+     * @param array{orderId: string, id: string, state: string} $transaction
+     */
+    private function assertOrderMatchesQuote(Checkout $checkout, PrismSettlementRecord $record, array $transaction): void
+    {
+        $total = CheckoutTotal::fiat($checkout);
+        if (null === $total || $total !== $record->quotedAmount || $checkout->currency !== $record->quotedCurrency) {
+            $this->abandon($transaction);
+
+            throw new ValidationException(
+                'The order total does not match the amount this payment was quoted for. '
+                . 'The order was placed but not paid, and this checkout can no longer be changed; '
+                . 'start a new checkout session.',
+            );
+        }
+    }
+
+    private function settleOnce(string $id, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
+    {
+        if (!$this->store->claim($id)) {
+            $current = $this->store->load($id);
+            if (null !== $current && $current->isSettled()) {
+                return $current;
+            }
+
+            throw new \RuntimeException(sprintf(
+                'Settlement for checkout %s is already in progress; not settling again.',
+                $id,
+            ));
+        }
+
+        return $this->settle($id, $record, $context);
     }
 
     private function settle(string $sessionId, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
@@ -218,14 +300,17 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         return $refreshed;
     }
 
-    private function markOrderPaid(Checkout $checkout, PrismSettlementRecord $record): void
+    /**
+     * The order's payment transaction, as Shopware holds it right after placement.
+     *
+     * @return array{orderId: string, id: string, state: string}
+     */
+    private function transaction(Checkout $checkout): array
     {
         $orderId = $checkout->order?->id;
         if (null === $orderId) {
             throw new \RuntimeException('Completed checkout has no order id to attach the settlement to.');
         }
-
-        $this->store->linkOrder($record->checkoutSessionId, $orderId);
 
         $row = $this->connection->fetchAssociative(
             'SELECT LOWER(HEX(ot.id)) AS id, sms.technical_name AS state
@@ -241,24 +326,30 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             throw new \RuntimeException(sprintf('Order %s has no payment transaction to settle.', $orderId));
         }
 
-        $transactionId = (string) $row['id'];
+        return ['orderId' => $orderId, 'id' => (string) $row['id'], 'state' => (string) $row['state']];
+    }
+
+    /** @param array{orderId: string, id: string, state: string} $transaction */
+    private function markPaid(array $transaction): void
+    {
         $shopwareContext = Context::createDefaultContext();
 
-        $awaitingPayment = [
-            OrderTransactionStates::STATE_OPEN,
-            OrderTransactionStates::STATE_IN_PROGRESS,
-            OrderTransactionStates::STATE_AUTHORIZED,
-            OrderTransactionStates::STATE_UNCONFIRMED,
-            OrderTransactionStates::STATE_REMINDED,
-        ];
-        if (\in_array($row['state'], $awaitingPayment, true)) {
-            $this->transactionStateHandler->paid($transactionId, $shopwareContext);
+        if (\in_array($transaction['state'], self::AWAITING_PAYMENT, true)) {
+            $this->transactionStateHandler->paid($transaction['id'], $shopwareContext);
         }
 
         $this->transactionRepository->update([[
-            'id' => $transactionId,
+            'id' => $transaction['id'],
             'paymentMethodId' => PrismX402PaymentHandler::PAYMENT_METHOD_ID,
         ]], $shopwareContext);
+    }
+
+    /** @param array{orderId: string, id: string, state: string} $transaction */
+    private function abandon(array $transaction): void
+    {
+        if (\in_array($transaction['state'], self::AWAITING_PAYMENT, true)) {
+            $this->transactionStateHandler->fail($transaction['id'], Context::createDefaultContext());
+        }
     }
 
     /** @return array<string, mixed> */
