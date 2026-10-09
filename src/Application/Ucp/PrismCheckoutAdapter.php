@@ -16,6 +16,7 @@ use Fd\PrismPayment\Core\Settlement\SettlementStateMachine;
 use Fd\PrismPayment\Core\Ucp\InstrumentAcceptance;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStateHandler;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStates;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Ucp\Sdk\Adapter\CheckoutAdapterInterface;
@@ -58,13 +59,13 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
     public function updateCheckout(CheckoutUpdateRequest $request, RequestContext $context): Checkout
     {
+        $existing = $this->store->load($request->id);
+        if (null !== $existing && !$this->stateMachine->mayChangeCart($existing->status)) {
+            throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
+        }
+
         $payment = $request->payment;
         if (null !== $payment && InstrumentAcceptance::isPrismHandler($payment->handlerId)) {
-            $existing = $this->store->load($request->id);
-            if (null !== $existing && !$this->stateMachine->mayCapture($existing->status)) {
-                throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
-            }
-
             $this->store->capture($request->id, $this->validateCredential($payment));
         } elseif (null !== $payment) {
             $this->store->releaseToBase($request->id);
@@ -145,6 +146,8 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         $submitted = $record->submittedPaymentRequirements();
         if (null === $offered
             || null === $submitted
+            || null === $record->quotedAmount
+            || null === $record->quotedCurrency
             || !$this->acceptsMatcher->matches($offered, $submitted)
         ) {
             throw new ValidationException(
@@ -192,6 +195,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     private function settle(string $sessionId, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
     {
         \assert(null !== $record->credential);
+        \assert(null !== $record->quotedAmount && null !== $record->quotedCurrency);
 
         $config = $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
         $result = $this->client->settle($config, $record->credential);
@@ -205,7 +209,13 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             ));
         }
 
-        $this->store->markSettled($sessionId, $result->transaction, $result->network);
+        $this->store->markSettled(
+            $sessionId,
+            $result->transaction,
+            $result->network,
+            $record->quotedAmount,
+            $record->quotedCurrency,
+        );
 
         $refreshed = $this->store->load($sessionId);
         if (null === $refreshed || !$refreshed->isSettled()) {
@@ -226,6 +236,21 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         $this->store->linkOrder($record->checkoutSessionId, $orderId);
+
+        $order = $this->connection->fetchAssociative(
+            'SELECT o.amount_total AS amount, c.iso_code AS currency
+             FROM `order` o
+             JOIN currency c ON c.id = o.currency_id
+             WHERE o.id = UNHEX(:orderId) AND o.version_id = UNHEX(:liveVersion)',
+            ['orderId' => $orderId, 'liveVersion' => Defaults::LIVE_VERSION],
+        );
+
+        if (false === $order || !$record->settledFor((string) $order['amount'], (string) $order['currency'])) {
+            throw new ValidationException(sprintf(
+                'Order %s does not match the settled Prism payment; it was left unpaid for review.',
+                $orderId,
+            ));
+        }
 
         $row = $this->connection->fetchAssociative(
             'SELECT LOWER(HEX(ot.id)) AS id, sms.technical_name AS state

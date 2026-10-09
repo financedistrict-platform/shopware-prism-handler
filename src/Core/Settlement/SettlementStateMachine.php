@@ -52,6 +52,11 @@ final class SettlementStateMachine
         return SettlementStatus::PENDING === $status || SettlementStatus::FAILED === $status;
     }
 
+    public function mayChangeCart(string $status): bool
+    {
+        return SettlementStatus::PENDING === $status || SettlementStatus::FAILED === $status;
+    }
+
     public function mayRelease(string $status): bool
     {
         return SettlementStatus::PENDING === $status || SettlementStatus::FAILED === $status;

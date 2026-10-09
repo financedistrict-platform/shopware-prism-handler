@@ -146,7 +146,7 @@ final class DbalCredentialStore implements CredentialStore
     public function load(string $sessionId): ?PrismSettlementRecord
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT credential, status, transaction_hash, network, offered_accepts
+            'SELECT credential, status, transaction_hash, network, offered_accepts, settled_amount, settled_currency
              FROM fd_prism_payment_settlement WHERE checkout_session_id = :id',
             ['id' => $sessionId],
         );
@@ -177,17 +177,25 @@ final class DbalCredentialStore implements CredentialStore
             offeredEntry: $offeredEntry,
             quotedAmount: $quotedAmount,
             quotedCurrency: $quotedCurrency,
+            settledAmount: null !== $row['settled_amount'] ? (string) $row['settled_amount'] : null,
+            settledCurrency: null !== $row['settled_currency'] ? (string) $row['settled_currency'] : null,
         );
     }
 
-    public function markSettled(string $sessionId, string $transactionHash, string $network): void
-    {
+    public function markSettled(
+        string $sessionId,
+        string $transactionHash,
+        string $network,
+        string $settledAmount,
+        string $settledCurrency,
+    ): void {
         // Runs only after a won claim() (status = settling), completing settling -> settled. The
         // `status = :settling` guard makes that explicit in SQL: the row can only reach `settled`
         // from `settling`, so nothing can be forced terminal out of another state.
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
-             SET status = :status, transaction_hash = :tx, network = :net, updated_at = :now
+             SET status = :status, transaction_hash = :tx, network = :net,
+                 settled_amount = :amount, settled_currency = :currency, updated_at = :now
              WHERE checkout_session_id = :id AND status = :settling',
             [
                 'id' => $sessionId,
@@ -195,6 +203,8 @@ final class DbalCredentialStore implements CredentialStore
                 'settling' => SettlementStatus::SETTLING,
                 'tx' => $transactionHash,
                 'net' => $network,
+                'amount' => $settledAmount,
+                'currency' => $settledCurrency,
                 'now' => $this->now(),
             ],
         );

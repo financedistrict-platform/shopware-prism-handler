@@ -31,6 +31,8 @@ final class DbalCredentialStoreTest extends TestCase
                 status TEXT NOT NULL,
                 transaction_hash TEXT NULL,
                 network TEXT NULL,
+                settled_amount TEXT NULL,
+                settled_currency TEXT NULL,
                 offered_accepts TEXT NULL,
                 order_id BLOB NULL,
                 created_at TEXT NOT NULL,
@@ -90,13 +92,26 @@ final class DbalCredentialStoreTest extends TestCase
         self::assertTrue($this->store->claim(self::SESSION_ID));
 
         $this->store->releaseToBase(self::SESSION_ID);
-        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base');
+        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base', '10.00', 'EUR');
 
         self::assertFalse($this->store->claim(self::SESSION_ID));
         self::assertSame(
             ['status' => SettlementStatus::SETTLED, 'credential' => self::CREDENTIAL],
             $this->row(),
         );
+    }
+
+    public function testMarkSettledKeepsTheSettledAmountForTheOrderCheck(): void
+    {
+        $this->seed(SettlementStatus::PENDING);
+        self::assertTrue($this->store->claim(self::SESSION_ID));
+
+        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base', '10.00', 'EUR');
+
+        $record = $this->store->load(self::SESSION_ID);
+        self::assertNotNull($record);
+        self::assertSame('10.00', $record->settledAmount);
+        self::assertSame('EUR', $record->settledCurrency);
     }
 
     private function seed(string $status): void

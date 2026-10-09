@@ -55,7 +55,13 @@ interface CredentialStore
 
     public function load(string $sessionId): ?PrismSettlementRecord;
 
-    public function markSettled(string $sessionId, string $transactionHash, string $network): void;
+    public function markSettled(
+        string $sessionId,
+        string $transactionHash,
+        string $network,
+        string $settledAmount,
+        string $settledCurrency,
+    ): void;
 
     public function markFailed(string $sessionId): void;
 

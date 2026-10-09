@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Fd\PrismPayment\Core\Settlement;
 
+use Fd\PrismPayment\Core\Payment\MinorUnits;
+
 /**
  * Per-checkout-session settlement state, persisted across the UCP lifecycle and used to keep
  * settlement once-only (F0/F1) and bound to what we offered (F2).
@@ -38,7 +40,24 @@ final readonly class PrismSettlementRecord
         public ?array $offeredEntry = null,
         public ?string $quotedAmount = null,
         public ?string $quotedCurrency = null,
+        public ?string $settledAmount = null,
+        public ?string $settledCurrency = null,
     ) {
+    }
+
+    public function settledFor(string $orderAmount, string $orderCurrency): bool
+    {
+        if (!$this->isSettled()
+            || null === $this->quotedAmount
+            || null === $this->quotedCurrency
+            || null === $this->settledAmount
+            || null === $this->settledCurrency
+        ) {
+            return false;
+        }
+
+        return MinorUnits::sameMoney($this->quotedAmount, $this->quotedCurrency, $orderAmount, $orderCurrency)
+            && MinorUnits::sameMoney($this->settledAmount, $this->settledCurrency, $orderAmount, $orderCurrency);
     }
 
     /**

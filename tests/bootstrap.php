@@ -25,6 +25,7 @@ spl_autoload_register(static function (string $class): void {
         'Ucp\\Sdk\\' => __DIR__ . '/Support/Ucp/Sdk/',
         'Shopware\\Core\\' => __DIR__ . '/Support/Shopware/Core/',
         'Doctrine\\DBAL\\' => __DIR__ . '/Support/Doctrine/DBAL/',
+        'Swag\\AgenticCommerce\\' => __DIR__ . '/Support/Swag/AgenticCommerce/',
         'Symfony\\Contracts\\HttpClient\\' => __DIR__ . '/Support/Symfony/HttpClient/',
     ];
 
