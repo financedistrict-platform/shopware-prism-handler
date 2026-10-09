@@ -27,6 +27,8 @@ spl_autoload_register(static function (string $class): void {
         'Swag\\AgenticCommerce\\' => __DIR__ . '/Support/Swag/AgenticCommerce/',
         'Doctrine\\DBAL\\' => __DIR__ . '/Support/Doctrine/DBAL/',
         'Symfony\\Contracts\\HttpClient\\' => __DIR__ . '/Support/Symfony/HttpClient/',
+        'Symfony\\Contracts\\Cache\\' => __DIR__ . '/Support/Symfony/Cache/',
+        'Psr\\Log\\' => __DIR__ . '/Support/Psr/Log/',
     ];
 
     foreach ($prefixes as $prefix => $baseDir) {

@@ -99,15 +99,75 @@ final class DbalCredentialStoreTest extends TestCase
         );
     }
 
-    private function seed(string $status): void
+    /**
+     * A cart change drops the quote AND the signature over it: `complete` then has no offer to match
+     * against and fails closed, however the re-quote goes.
+     */
+    public function testInvalidateOfferClearsQuoteAndCredentialAndFailsTheRow(): void
+    {
+        $this->seed(SettlementStatus::PENDING, offer: '{"quotedAmount":"0.10"}');
+
+        $this->store->invalidateOffer(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => SettlementStatus::FAILED, 'credential' => null, 'offered_accepts' => null],
+            $this->fullRow(),
+        );
+    }
+
+    /** An offer-only row has no signature to invalidate, so it loses the quote but keeps its status. */
+    public function testInvalidateOfferOnOfferOnlyRowDropsTheQuoteButNotTheStatus(): void
+    {
+        $this->seed(SettlementStatus::PENDING, credential: null, offer: '{"quotedAmount":"0.10"}');
+
+        $this->store->invalidateOffer(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => SettlementStatus::PENDING, 'credential' => null, 'offered_accepts' => null],
+            $this->fullRow(),
+        );
+    }
+
+    /**
+     * A settled row is terminal, and a settling row is mid-flight on-chain: neither may be disturbed
+     * by a cart change, or a payment that is happening gets marked failed underneath it.
+     */
+    #[DataProvider('lockedStatuses')]
+    public function testInvalidateOfferLeavesLockedRowUntouched(string $status): void
+    {
+        $this->seed($status, offer: '{"quotedAmount":"0.10"}');
+
+        $this->store->invalidateOffer(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => $status, 'credential' => self::CREDENTIAL, 'offered_accepts' => '{"quotedAmount":"0.10"}'],
+            $this->fullRow(),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fullRow(): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT status, credential, offered_accepts FROM fd_prism_payment_settlement WHERE checkout_session_id = :id',
+        );
+        $statement->execute(['id' => self::SESSION_ID]);
+
+        return $statement->fetch(\PDO::FETCH_ASSOC);
+    }
+
+    private function seed(string $status, ?string $credential = self::CREDENTIAL, ?string $offer = null): void
     {
         $this->pdo->prepare(
-            'INSERT INTO fd_prism_payment_settlement (checkout_session_id, credential, status, created_at)
-             VALUES (:id, :credential, :status, :now)',
+            'INSERT INTO fd_prism_payment_settlement (checkout_session_id, credential, status, offered_accepts, created_at)
+             VALUES (:id, :credential, :status, :offer, :now)',
         )->execute([
             'id' => self::SESSION_ID,
-            'credential' => self::CREDENTIAL,
+            'credential' => $credential,
             'status' => $status,
+            'offer' => $offer,
             'now' => '2026-09-30 00:00:00.000',
         ]);
     }
