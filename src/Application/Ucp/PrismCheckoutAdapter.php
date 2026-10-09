@@ -13,6 +13,7 @@ use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
 use Fd\PrismPayment\Core\Settlement\SettlementStateMachine;
+use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Core\Ucp\InstrumentAcceptance;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStateHandler;
 use Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStates;
@@ -65,21 +66,35 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         return $this->inner->getCheckout($id, $context);
     }
 
+    /**
+     * Nothing is written until the base has accepted the request. The instrument is validated and
+     * the settlement state checked first — both are read-only — but the capture or release lands
+     * only once {@see CheckoutAdapterInterface::updateCheckout()} has returned, so a cart the base
+     * refuses cannot disturb a credential that is already stored.
+     */
     public function updateCheckout(CheckoutUpdateRequest $request, RequestContext $context): Checkout
     {
         $payment = $request->payment;
+        $credential = null;
+
         if (null !== $payment && InstrumentAcceptance::isPrismHandler($payment->handlerId)) {
             $existing = $this->store->load($request->id);
             if (null !== $existing && !$this->stateMachine->mayCapture($existing->status)) {
                 throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
             }
 
-            $this->store->capture($request->id, $this->validateCredential($payment));
+            $credential = $this->validateCredential($payment);
+        }
+
+        $checkout = $this->inner->updateCheckout($request, $context);
+
+        if (null !== $credential) {
+            $this->store->capture($request->id, $credential);
         } elseif (null !== $payment) {
             $this->store->releaseToBase($request->id);
         }
 
-        return $this->inner->updateCheckout($request, $context);
+        return $checkout;
     }
 
     public function completeCheckoutFromRequest(CheckoutCompleteRequest $request, RequestContext $context): Checkout
@@ -88,35 +103,38 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
         if (null === $instrument) {
             if ([] === $request->instruments) {
-                return $this->completeCheckout($request->id, $context);
+                return $this->complete($request->id, $context, null);
             }
 
             $existing = $this->store->load($request->id);
+            $release = false;
             if (null !== $existing && !$existing->isSettled()) {
                 if (!$this->stateMachine->mayCapture($existing->status)) {
                     throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
                 }
 
+                $release = true;
+            }
+
+            $checkout = $this->inner instanceof PaymentAwareCheckoutAdapterInterface
+                ? $this->inner->completeCheckoutFromRequest($request, $context)
+                : $this->inner->completeCheckout($request->id, $context);
+
+            if ($release) {
                 $this->store->releaseToBase($request->id);
             }
 
-            return $this->inner instanceof PaymentAwareCheckoutAdapterInterface
-                ? $this->inner->completeCheckoutFromRequest($request, $context)
-                : $this->inner->completeCheckout($request->id, $context);
+            return $checkout;
         }
 
         $credential = $this->validateCredential($instrument);
 
         $existing = $this->store->load($request->id);
-        if (null === $existing || !$existing->isSettled()) {
-            if (null !== $existing && !$this->stateMachine->mayCapture($existing->status)) {
-                throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
-            }
-
-            $this->store->capture($request->id, $credential);
+        if (null !== $existing && !$existing->isSettled() && !$this->stateMachine->mayCapture($existing->status)) {
+            throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
         }
 
-        return $this->completeCheckout($request->id, $context);
+        return $this->complete($request->id, $context, $credential);
     }
 
     /**
@@ -127,7 +145,28 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
      */
     public function completeCheckout(string $id, RequestContext $context): Checkout
     {
+        return $this->complete($id, $context, null);
+    }
+
+    /**
+     * @param array<string, mixed>|null $pending a credential that arrived on this request and has
+     *                                          not been stored yet — it is carried in memory so a
+     *                                          base that refuses the completion leaves the row as
+     *                                          it found it
+     */
+    private function complete(string $id, RequestContext $context, ?array $pending): Checkout
+    {
         $record = $this->store->load($id);
+
+        // A settled or mid-settle row is one the store would refuse to overwrite, so there is
+        // nothing to capture and the record is read as it stands.
+        $toCapture = null !== $record && !$this->stateMachine->mayCapture($record->status)
+            ? null
+            : $pending;
+
+        if (null !== $toCapture) {
+            $record = $this->capturing($id, $toCapture, $record);
+        }
 
         if (null === $record) {
             return $this->inner->completeCheckout($id, $context);
@@ -150,6 +189,11 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         $checkout = $this->inner->completeCheckout($id, $context);
+
+        if (null !== $toCapture) {
+            $this->store->capture($id, $toCapture);
+        }
+
         $transaction = $this->transaction($checkout);
 
         if (OrderTransactionStates::STATE_PAID === $transaction['state']) {
@@ -176,6 +220,28 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         $this->markPaid($transaction);
 
         return $checkout;
+    }
+
+    /**
+     * The record as {@see CredentialStore::capture()} will leave it: the offer kept, the credential
+     * replaced, the status reset to pending (a cart that moved earlier must not keep refusing a
+     * fresh authorization). Held here, beside the capture it anticipates, so the complete path can
+     * check the credential before the order exists and still write it only afterwards.
+     *
+     * @param array<string, mixed> $credential
+     */
+    private function capturing(string $id, array $credential, ?PrismSettlementRecord $existing): PrismSettlementRecord
+    {
+        return new PrismSettlementRecord(
+            checkoutSessionId: $id,
+            credential: $credential,
+            status: SettlementStatus::PENDING,
+            transactionHash: null,
+            network: null,
+            offeredEntry: $existing?->offeredEntry,
+            quotedAmount: $existing?->quotedAmount,
+            quotedCurrency: $existing?->quotedCurrency,
+        );
     }
 
     public function cancelCheckout(string $id, RequestContext $context): Checkout

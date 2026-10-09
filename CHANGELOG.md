@@ -1,3 +1,14 @@
+# 0.7.8
+
+Settlement state is written only after Shopware accepts the request. `update` and `complete` now
+validate the payment instrument and the settlement state first — both read-only — and store the
+credential, or release the session to the base, once the base adapter has returned. A request
+Shopware refuses therefore leaves the stored payment exactly as it found it.
+
+On `complete` the credential is carried in memory through the quote and offer checks and persisted
+after the order exists, so the order remains the first thing Shopware is asked for. The public
+`completeCheckout()` keeps its signature and behaviour.
+
 # 0.7.7
 
 Settlement follows the order. `complete` now asks Shopware to place the order first and settles only
