@@ -1,3 +1,52 @@
+# 0.7.9
+
+The settlement record's terminal state is enforced in SQL on every write. Marking a settlement failed
+now applies only to a row that has not settled, matching the transitions the settlement state machine
+declares, so a completed payment cannot be moved out of its terminal state by a later write. The other
+writes already carried their own guards; this brings the last one in line.
+
+# 0.7.8
+
+Settlement state is written only after Shopware accepts the request. `update` and `complete` now
+validate the payment instrument and the settlement state first — both read-only — and store the
+credential, or release the session to the base, once the base adapter has returned. A request
+Shopware refuses therefore leaves the stored payment exactly as it found it.
+
+On `complete` the credential is carried in memory through the quote and offer checks and persisted
+after the order exists, so the order remains the first thing Shopware is asked for. The public
+`completeCheckout()` keeps its signature and behaviour.
+
+# 0.7.7
+
+Settlement follows the order. `complete` now asks Shopware to place the order first and settles only
+once it exists, so a checkout Shopware will not accept never reaches the payment. The payment then
+moves through Shopware's own transaction states: `in_progress` while settling, then `paid`, or
+`failed` if the settlement is declined or refused.
+
+The payment is bound to the cart its quote was issued for. The checkout's fiat total is compared with
+the amount the offer was quoted for before the order is placed, and again against the order Shopware
+produced; either mismatch is refused and nothing settles. The comparison is fiat-to-fiat through a
+single shared helper, so the quote and the check can never disagree on rounding. The token amount is
+never converted or compared — it rides inside the signature and settles as signed.
+
+A cart change clears the stored offer before re-quoting, so a failed re-quote leaves nothing an older
+authorization could still settle against. `settled` and `settling` rows are untouched, as before.
+
+The internal `CredentialStore` port renames `invalidateCredential` to `invalidateOffer`, matching what
+it now does.
+
+# 0.7.6
+
+Handler discovery calls the public `GET /ucp/<ucp-version>/handlers` instead of `/api/v2/merchant/ucp/<ucp-version>/handlers`. Needs Prism with the public handlers route.
+
+# 0.7.5
+
+The x402 offer comes from `POST /api/v2/merchant/payment-requirements`, which has no UCP version in the path and returns raw x402. The checkout entry takes its `id` and `version` from the same handler declaration `/.well-known/ucp` serves, so discovery and checkout always agree. Needs Prism with the protocol-free payment-requirements route.
+
+# 0.7.4
+
+The x402 offer `resource.url` now keeps the store's scheme and port. It is built from the store base URI, so a store at `http://localhost:8081` gets `http://localhost:8081/ucp/v1/checkout-sessions/<id>` instead of `http://localhost/...`.
+
 # 0.7.3
 
 Maintenance release: leaner Prism client. No behaviour change for stores.

@@ -36,7 +36,7 @@ final class DbalCredentialStore implements CredentialStore
     {
         // Offer-first: create the row if absent, otherwise overwrite ONLY the offer column (a
         // wrapper {quotedAmount, quotedCurrency, entry}). Never touches credential/status, so it is
-        // disjoint from capture()/invalidateCredential(); never disturbs a settled row (F0).
+        // disjoint from capture()/invalidateOffer(); never disturbs a settled row (F0).
         $offer = $this->encode([
             'quotedAmount' => $quotedAmount,
             'quotedCurrency' => $quotedCurrency,
@@ -60,18 +60,24 @@ final class DbalCredentialStore implements CredentialStore
         );
     }
 
-    public function invalidateCredential(string $sessionId): void
+    public function invalidateOffer(string $sessionId): void
     {
-        // Cart amount changed after signing (or settle failed): drop the credential and move to
-        // failed so complete refuses until a fresh signature is submitted. Settled rows untouched.
+        // The cart changed: the quote, and any signature over it, no longer apply. A row that held a
+        // credential moves to failed so complete refuses until a fresh one arrives; an offer-only row
+        // just loses its offer. `status` is assigned first so it sees the row's original credential.
+        // Settled and settling rows are never touched.
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
-             SET status = :failed, credential = NULL, updated_at = :now
-             WHERE checkout_session_id = :id AND status <> :settled',
+             SET status = CASE WHEN credential IS NULL THEN status ELSE :failed END,
+                 offered_accepts = NULL,
+                 credential = NULL,
+                 updated_at = :now
+             WHERE checkout_session_id = :id AND status NOT IN (:settled, :settling)',
             [
                 'id' => $sessionId,
                 'failed' => SettlementStatus::FAILED,
                 'settled' => SettlementStatus::SETTLED,
+                'settling' => SettlementStatus::SETTLING,
                 'now' => $this->now(),
             ],
         );
@@ -202,9 +208,20 @@ final class DbalCredentialStore implements CredentialStore
 
     public function markFailed(string $sessionId): void
     {
+        // `failed` has exactly two legal predecessors — pending (rejected before it was claimed) and
+        // settling (rejected on-chain). The guard spells that out in SQL the way markSettled() does,
+        // so a settled row cannot be reverted by a caller that forgot to check first (F0).
         $this->connection->executeStatement(
-            'UPDATE fd_prism_payment_settlement SET status = :status, updated_at = :now WHERE checkout_session_id = :id',
-            ['id' => $sessionId, 'status' => SettlementStatus::FAILED, 'now' => $this->now()],
+            'UPDATE fd_prism_payment_settlement
+             SET status = :status, updated_at = :now
+             WHERE checkout_session_id = :id AND status IN (:pending, :settling)',
+            [
+                'id' => $sessionId,
+                'status' => SettlementStatus::FAILED,
+                'pending' => SettlementStatus::PENDING,
+                'settling' => SettlementStatus::SETTLING,
+                'now' => $this->now(),
+            ],
         );
     }
 

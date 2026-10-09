@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Doctrine\DBAL;
 
-final class Connection
+class Connection
 {
     public function __construct(
         private readonly \PDO $pdo,

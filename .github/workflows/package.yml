@@ -21,7 +21,10 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
-    container: ghcr.io/shopware/shopware-cli:latest-php-8.3
+    # Pinned, not `latest-php-8.3`: that tag moves, and a CLI released on 2026-10-06 changed
+    # `extension validate` in a way that broke this job on untouched commits (#27). Bump
+    # deliberately so the next behaviour change lands in a PR rather than mid-review.
+    container: ghcr.io/shopware/shopware-cli:0.19.1-php-8.3
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,8 +34,13 @@ jobs:
       - name: Mark workspace safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
+      # phpstan is excluded because it cannot run here, not to silence it: the checker resolves the
+      # extension's composer dependencies, and shopware/agentic-commerce is the licensed base plugin
+      # — not on Packagist, and not publishable. Even with it resolved, analysing our decorators
+      # needs that plugin's classes. PHP coverage comes from the `core-tests` workflow instead,
+      # which runs PHPUnit against the stubs in tests/Support.
       - name: Validate extension
-        run: shopware-cli extension validate .
+        run: shopware-cli extension validate . --exclude phpstan
 
       # Absolute output dir: git mode checks the source out into a temp working dir, so a
       # relative --output-directory would land there instead of the workspace.

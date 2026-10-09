@@ -18,55 +18,43 @@ final class PrismResponseParserTest extends TestCase
         $this->parser = new PrismResponseParser();
     }
 
-    public function testReturnsFirstHandlerEntryForValidPaymentRequirements(): void
+    public function testReturnsRawConfigForValidPaymentRequirements(): void
     {
-        $entry = [
-            'id' => 'x402',
-            'version' => '2026-10-07',
-            'config' => ['x402Version' => 2, 'accepts' => [['scheme' => 'exact']]],
+        $body = [
+            'x402Version' => 2,
+            'resource' => ['url' => 'https://shop.example/c/1'],
+            'accepts' => [['scheme' => 'exact']],
+            'promotions' => [['id' => 'p1']],
         ];
 
-        $result = $this->parser->paymentRequirementsEntry([HandlerId::PRISM => [$entry]]);
-
-        self::assertSame($entry, $result);
-    }
-
-    public function testThrowsWhenHandlerKeyMissing(): void
-    {
-        $this->expectException(PrismApiException::class);
-        $this->parser->paymentRequirementsEntry(['some.other.handler' => [['id' => 'x']]]);
-    }
-
-    public function testThrowsWhenHandlerEntryListEmpty(): void
-    {
-        $this->expectException(PrismApiException::class);
-        $this->parser->paymentRequirementsEntry([HandlerId::PRISM => []]);
-    }
-
-    public function testThrowsWhenRequiredEntryKeyMissing(): void
-    {
-        $this->expectException(PrismApiException::class);
-        // missing 'config'
-        $this->parser->paymentRequirementsEntry([HandlerId::PRISM => [['id' => 'x402', 'version' => 'v']]]);
+        self::assertSame($body, $this->parser->paymentRequirementsConfig($body));
     }
 
     public function testThrowsWhenConfigLacksX402Version(): void
     {
         $this->expectException(PrismApiException::class);
-        $this->parser->paymentRequirementsEntry([HandlerId::PRISM => [[
-            'id' => 'x402',
-            'version' => 'v',
-            'config' => ['accepts' => []],
-        ]]]);
+        $this->parser->paymentRequirementsConfig(['accepts' => []]);
+    }
+
+    public function testThrowsWhenConfigLacksAccepts(): void
+    {
+        $this->expectException(PrismApiException::class);
+        $this->parser->paymentRequirementsConfig(['x402Version' => 2]);
     }
 
     public function testThrowsWhenConfigAcceptsNotArray(): void
     {
         $this->expectException(PrismApiException::class);
-        $this->parser->paymentRequirementsEntry([HandlerId::PRISM => [[
-            'id' => 'x402',
+        $this->parser->paymentRequirementsConfig(['x402Version' => 2, 'accepts' => 'nope']);
+    }
+
+    public function testThrowsOnWrappedHandlerEntryShape(): void
+    {
+        $this->expectException(PrismApiException::class);
+        $this->parser->paymentRequirementsConfig([HandlerId::PRISM => [[
+            'id' => 'x',
             'version' => 'v',
-            'config' => ['x402Version' => 2, 'accepts' => 'nope'],
+            'config' => ['x402Version' => 2, 'accepts' => []],
         ]]]);
     }
 
@@ -103,7 +91,6 @@ final class PrismResponseParserTest extends TestCase
     public function testThrowsWhenSettleMissingRequiredField(): void
     {
         $this->expectException(PrismApiException::class);
-        // missing 'network'
         $this->parser->settleResult(['success' => true, 'transaction' => '0xabc']);
     }
 }
