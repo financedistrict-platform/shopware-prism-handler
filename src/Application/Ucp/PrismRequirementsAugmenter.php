@@ -15,7 +15,6 @@ use Psr\Log\LoggerInterface;
 use Ucp\Sdk\Contract\CheckoutResponseAugmenterInterface;
 use Ucp\Sdk\Enum\CheckoutStatus;
 use Ucp\Sdk\Model\Checkout\Checkout;
-use Ucp\Sdk\Model\Common\Money;
 use Ucp\Sdk\Model\RequestContext;
 
 /**
@@ -43,12 +42,11 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
             return $this->withSettlement($checkout);
         }
 
-        $amount = $this->totalAmount($checkout);
-        if (null === $amount || $amount <= 0.0) {
+        $fiatAmount = CheckoutTotal::fiat($checkout);
+        if (null === $fiatAmount || (float) $fiatAmount <= 0.0) {
             return $checkout;
         }
 
-        $fiatAmount = $this->formatAmount($amount);
         $currency = $checkout->currency;
 
         $existing = $this->credentialStore->load($checkout->id);
@@ -56,8 +54,10 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
             $entry = $existing->offeredEntry;
             \assert(\is_array($entry));
         } else {
-            if (null !== $existing && $existing->hasCredential()) {
-                $this->credentialStore->invalidateCredential($checkout->id);
+            // The stored quote is for a different cart. Drop it before asking Prism again, so a
+            // failed re-quote leaves nothing an old signature could still settle against.
+            if (null !== $existing) {
+                $this->credentialStore->invalidateOffer($checkout->id);
             }
 
             $resourceUrl = $checkout->continueUrl ?? CheckoutSessionUrl::for($context, $checkout->id);
@@ -152,17 +152,6 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         );
     }
 
-    private function totalAmount(Checkout $checkout): ?float
-    {
-        foreach ($checkout->totals as $money) {
-            if ($money instanceof Money && 'total' === $money->type) {
-                return $money->amount;
-            }
-        }
-
-        return null;
-    }
-
     private const MAX_DESCRIPTION_LENGTH = 100;
 
     private function describeCart(Checkout $checkout): ?string
@@ -187,10 +176,5 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         }
 
         return $description;
-    }
-
-    private function formatAmount(float $amount): string
-    {
-        return number_format($amount, 2, '.', '');
     }
 }

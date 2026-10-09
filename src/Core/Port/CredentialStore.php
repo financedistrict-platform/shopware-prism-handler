@@ -28,7 +28,7 @@ interface CredentialStore
      * (or a settle failed): clear the credential and move the row to `failed` so complete REFUSES
      * (the agent must re-sign for the new amount). No-op on a settled row (F0).
      */
-    public function invalidateCredential(string $sessionId): void;
+    public function invalidateOffer(string $sessionId): void;
 
     /**
      * Release our claim on a session because the agent selected a DIFFERENT payment method: clear

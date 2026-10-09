@@ -1,3 +1,22 @@
+# 0.7.7
+
+Settlement follows the order. `complete` now asks Shopware to place the order first and settles only
+once it exists, so a checkout Shopware will not accept never reaches the payment. The payment then
+moves through Shopware's own transaction states: `in_progress` while settling, then `paid`, or
+`failed` if the settlement is declined or refused.
+
+The payment is bound to the cart its quote was issued for. The checkout's fiat total is compared with
+the amount the offer was quoted for before the order is placed, and again against the order Shopware
+produced; either mismatch is refused and nothing settles. The comparison is fiat-to-fiat through a
+single shared helper, so the quote and the check can never disagree on rounding. The token amount is
+never converted or compared — it rides inside the signature and settles as signed.
+
+A cart change clears the stored offer before re-quoting, so a failed re-quote leaves nothing an older
+authorization could still settle against. `settled` and `settling` rows are untouched, as before.
+
+The internal `CredentialStore` port renames `invalidateCredential` to `invalidateOffer`, matching what
+it now does.
+
 # 0.7.6
 
 Handler discovery calls the public `GET /ucp/<ucp-version>/handlers` instead of `/api/v2/merchant/ucp/<ucp-version>/handlers`. Needs Prism with the public handlers route.
