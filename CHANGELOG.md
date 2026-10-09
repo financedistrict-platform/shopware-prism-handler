@@ -1,3 +1,10 @@
+# 0.7.9
+
+The settlement record's terminal state is enforced in SQL on every write. Marking a settlement failed
+now applies only to a row that has not settled, matching the transitions the settlement state machine
+declares, so a completed payment cannot be moved out of its terminal state by a later write. The other
+writes already carried their own guards; this brings the last one in line.
+
 # 0.7.8
 
 Settlement state is written only after Shopware accepts the request. `update` and `complete` now

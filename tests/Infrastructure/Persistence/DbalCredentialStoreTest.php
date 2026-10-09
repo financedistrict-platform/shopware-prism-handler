@@ -146,6 +146,46 @@ final class DbalCredentialStoreTest extends TestCase
     }
 
     /**
+     * A settled payment is on-chain and terminal. `markFailed` carries no state check of its own at
+     * the call site, so the guard has to live here — otherwise one caller that forgets is enough to
+     * revert a paid row and let a second authorization be captured against it.
+     */
+    public function testMarkFailedLeavesASettledRowUntouched(): void
+    {
+        $this->seed(SettlementStatus::SETTLED);
+
+        $this->store->markFailed(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => SettlementStatus::SETTLED, 'credential' => self::CREDENTIAL],
+            $this->row(),
+        );
+    }
+
+    /** The two legal predecessors of `failed`: rejected before the claim, and rejected on-chain. */
+    #[DataProvider('failableStatuses')]
+    public function testMarkFailedFailsARowThatHasNotSettled(string $status): void
+    {
+        $this->seed($status);
+
+        $this->store->markFailed(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => SettlementStatus::FAILED, 'credential' => self::CREDENTIAL],
+            $this->row(),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function failableStatuses(): iterable
+    {
+        yield 'pending' => [SettlementStatus::PENDING];
+        yield 'settling' => [SettlementStatus::SETTLING];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function fullRow(): array
