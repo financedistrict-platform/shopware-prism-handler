@@ -13,6 +13,11 @@ final class InMemorySettlementStore implements CredentialStore
     /** @var array<string, array<string, mixed>> */
     public array $rows = [];
 
+    public function __construct(
+        private readonly ?FrozenClock $clock = null,
+    ) {
+    }
+
     public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry, \DateTimeImmutable $quotedAt): void
     {
         $row = $this->rows[$sessionId] ?? $this->emptyRow();
@@ -78,6 +83,24 @@ final class InMemorySettlementStore implements CredentialStore
         }
 
         $this->rows[$sessionId]['status'] = SettlementStatus::SETTLING;
+        $this->rows[$sessionId]['settlingSince'] = $this->now();
+
+        return true;
+    }
+
+    public function reclaimStaleSettlement(string $sessionId, int $staleAfterSeconds): bool
+    {
+        $row = $this->rows[$sessionId] ?? null;
+        if (null === $row || SettlementStatus::SETTLING !== $row['status']) {
+            return false;
+        }
+
+        $since = $row['settlingSince'] ?? null;
+        if (null !== $since && $this->now()->getTimestamp() - $since->getTimestamp() < $staleAfterSeconds) {
+            return false;
+        }
+
+        $this->rows[$sessionId]['settlingSince'] = $this->now();
 
         return true;
     }
@@ -119,12 +142,21 @@ final class InMemorySettlementStore implements CredentialStore
 
     public function markFailed(string $sessionId): void
     {
+        if (SettlementStatus::SETTLING !== ($this->rows[$sessionId]['status'] ?? null)) {
+            return;
+        }
+
         $this->rows[$sessionId]['status'] = SettlementStatus::FAILED;
     }
 
     public function linkOrder(string $sessionId, string $orderId): void
     {
         $this->rows[$sessionId]['orderId'] = $orderId;
+    }
+
+    private function now(): \DateTimeImmutable
+    {
+        return $this->clock?->now() ?? new \DateTimeImmutable();
     }
 
     private function isLocked(string $sessionId): bool
@@ -149,6 +181,7 @@ final class InMemorySettlementStore implements CredentialStore
             'settledQuoteAmount' => null,
             'settledQuoteCurrency' => null,
             'orderId' => null,
+            'settlingSince' => null,
         ];
     }
 }

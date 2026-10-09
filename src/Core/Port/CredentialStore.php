@@ -55,6 +55,8 @@ interface CredentialStore
      */
     public function claim(string $sessionId): bool;
 
+    public function reclaimStaleSettlement(string $sessionId, int $staleAfterSeconds): bool;
+
     public function load(string $sessionId): ?PrismSettlementRecord;
 
     public function markSettled(

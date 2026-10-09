@@ -8,6 +8,8 @@ use Doctrine\DBAL\Connection;
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Core\Payment\AcceptsMatcher;
+use Fd\PrismPayment\Core\Payment\PrismConfig;
+use Fd\PrismPayment\Core\Payment\SettleResult;
 use Fd\PrismPayment\Core\Port\Clock;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
@@ -33,6 +35,8 @@ use Ucp\Sdk\Model\RequestContext;
 final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapterInterface
 {
     private const MAX_CREDENTIAL_BYTES = 8192;
+
+    private const STALE_SETTLEMENT_SECONDS = 120;
 
     public function __construct(
         private CheckoutAdapterInterface $inner,
@@ -163,7 +167,10 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             return $this->inner->completeCheckout($id, $context);
         }
 
-        if (!$record->isSettled()) {
+        if ($record->isSettling()) {
+            $this->assertQuoteCoversCart($id, $record, $context);
+            $record = $this->resumeStaleSettlement($id, $record, $context);
+        } elseif (!$record->isSettled()) {
             $this->assertQuoteCoversCart($id, $record, $context);
             $this->assertQuoteStillValid($record);
             $record = $this->settleOnce($id, $record, $context);
@@ -226,6 +233,27 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         return $this->settle($id, $record, $context);
     }
 
+    private function resumeStaleSettlement(string $id, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
+    {
+        \assert(null !== $record->credential);
+
+        if (!$this->store->reclaimStaleSettlement($id, self::STALE_SETTLEMENT_SECONDS)) {
+            throw new ValidationException(
+                'This checkout has a Prism payment being settled on-chain. Try completing it again in a few minutes.',
+            );
+        }
+
+        $result = $this->client->settle($this->prismConfig($context), $record->credential);
+
+        if (!$result->success) {
+            throw new ValidationException(
+                'The outcome of this Prism payment could not be confirmed. It is kept for review by the merchant; do not pay again.',
+            );
+        }
+
+        return $this->recordSettlement($id, $record, $result);
+    }
+
     public function cancelCheckout(string $id, RequestContext $context): Checkout
     {
         $this->authorizeSession($id, $context);
@@ -253,10 +281,8 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     private function settle(string $sessionId, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
     {
         \assert(null !== $record->credential);
-        \assert(null !== $record->quotedAmount && null !== $record->quotedCurrency);
 
-        $config = $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
-        $result = $this->client->settle($config, $record->credential);
+        $result = $this->client->settle($this->prismConfig($context), $record->credential);
 
         if (!$result->success) {
             $this->store->markFailed($sessionId);
@@ -266,6 +292,13 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
                 $result->errorReason ?? 'unknown error',
             ));
         }
+
+        return $this->recordSettlement($sessionId, $record, $result);
+    }
+
+    private function recordSettlement(string $sessionId, PrismSettlementRecord $record, SettleResult $result): PrismSettlementRecord
+    {
+        \assert(null !== $record->quotedAmount && null !== $record->quotedCurrency);
 
         $this->store->markSettled(
             $sessionId,
@@ -284,6 +317,11 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         return $refreshed;
+    }
+
+    private function prismConfig(RequestContext $context): PrismConfig
+    {
+        return $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
     }
 
     private function markOrderPaid(Checkout $checkout, PrismSettlementRecord $record): void

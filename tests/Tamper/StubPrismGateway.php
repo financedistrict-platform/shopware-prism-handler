@@ -16,6 +16,9 @@ final class StubPrismGateway implements PrismGateway, ConfigResolver
 
     public bool $requirementsUnavailable = false;
 
+    /** @var list<string> */
+    public array $settleOutcomes = [];
+
     public function paymentRequirements(PrismConfig $config, string $amount, string $currency, string $resourceUrl, ?string $resourceDescription): array
     {
         if ($this->requirementsUnavailable) {
@@ -29,7 +32,11 @@ final class StubPrismGateway implements PrismGateway, ConfigResolver
     {
         ++$this->settlements;
 
-        return new SettleResult(true, '0xsettled', 'base', '0xpayer', null);
+        return match (array_shift($this->settleOutcomes)) {
+            'unreachable' => throw new PrismApiException('Prism POST /api/v2/payment/settle transport error: timeout'),
+            'declined' => new SettleResult(false, '', 'base', null, 'invalid_nonce'),
+            default => new SettleResult(true, '0xsettled', 'base', '0xpayer', null),
+        };
     }
 
     public function resolve(?string $salesChannelId): PrismConfig

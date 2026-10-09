@@ -140,6 +140,62 @@ final class DbalCredentialStoreTest extends TestCase
         self::assertTrue($record->isSettled());
     }
 
+    public function testMarkFailedEndsAnInFlightSettlement(): void
+    {
+        $this->seed(SettlementStatus::PENDING);
+        self::assertTrue($this->store->claim(self::SESSION_ID));
+
+        $this->store->markFailed(self::SESSION_ID);
+
+        self::assertSame(SettlementStatus::FAILED, $this->row()['status']);
+    }
+
+    #[DataProvider('statusesWithoutSettleInFlight')]
+    public function testMarkFailedLeavesRowWithoutSettleInFlightUntouched(string $status): void
+    {
+        $this->seed($status);
+
+        $this->store->markFailed(self::SESSION_ID);
+
+        self::assertSame(['status' => $status, 'credential' => self::CREDENTIAL], $this->row());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function statusesWithoutSettleInFlight(): iterable
+    {
+        yield 'settled' => [SettlementStatus::SETTLED];
+        yield 'pending' => [SettlementStatus::PENDING];
+    }
+
+    public function testStaleSettlementIsReclaimedOnce(): void
+    {
+        $this->seed(SettlementStatus::SETTLING);
+        $this->touch('2026-09-30 00:00:00.000');
+
+        self::assertTrue($this->store->reclaimStaleSettlement(self::SESSION_ID, 120));
+        self::assertFalse($this->store->reclaimStaleSettlement(self::SESSION_ID, 120));
+        self::assertSame(SettlementStatus::SETTLING, $this->row()['status']);
+    }
+
+    public function testSettlementInsideTheSettleWindowIsNotReclaimed(): void
+    {
+        $this->seed(SettlementStatus::PENDING);
+        self::assertTrue($this->store->claim(self::SESSION_ID));
+
+        self::assertFalse($this->store->reclaimStaleSettlement(self::SESSION_ID, 120));
+    }
+
+    #[DataProvider('statusesWithoutSettleInFlight')]
+    public function testOnlyAnInFlightSettlementIsReclaimed(string $status): void
+    {
+        $this->seed($status);
+        $this->touch('2026-09-30 00:00:00.000');
+
+        self::assertFalse($this->store->reclaimStaleSettlement(self::SESSION_ID, 120));
+    }
+
     #[DataProvider('releasableStatuses')]
     public function testWithdrawOfferDropsTheQuoteOfAnOpenSession(string $status): void
     {
@@ -194,6 +250,11 @@ final class DbalCredentialStoreTest extends TestCase
         $this->pdo->prepare('UPDATE fd_prism_payment_settlement SET offered_accepts = :offer')->execute([
             'offer' => '{"quotedAmount":"10.00","quotedCurrency":"EUR","entry":{"config":{"accepts":[{"payTo":"0xmerchant"}]}}}',
         ]);
+    }
+
+    private function touch(string $updatedAt): void
+    {
+        $this->pdo->prepare('UPDATE fd_prism_payment_settlement SET updated_at = :at')->execute(['at' => $updatedAt]);
     }
 
     private function seed(string $status): void

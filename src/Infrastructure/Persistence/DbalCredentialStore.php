@@ -156,6 +156,23 @@ final class DbalCredentialStore implements CredentialStore
         return 1 === (int) $affected;
     }
 
+    public function reclaimStaleSettlement(string $sessionId, int $staleAfterSeconds): bool
+    {
+        $affected = $this->connection->executeStatement(
+            'UPDATE fd_prism_payment_settlement
+             SET updated_at = :now
+             WHERE checkout_session_id = :id AND status = :settling AND COALESCE(updated_at, created_at) <= :staleBefore',
+            [
+                'id' => $sessionId,
+                'settling' => SettlementStatus::SETTLING,
+                'now' => $this->now(),
+                'staleBefore' => $this->secondsAgo($staleAfterSeconds),
+            ],
+        );
+
+        return 1 === (int) $affected;
+    }
+
     public function load(string $sessionId): ?PrismSettlementRecord
     {
         $row = $this->connection->fetchAssociative(
@@ -216,8 +233,15 @@ final class DbalCredentialStore implements CredentialStore
     public function markFailed(string $sessionId): void
     {
         $this->connection->executeStatement(
-            'UPDATE fd_prism_payment_settlement SET status = :status, updated_at = :now WHERE checkout_session_id = :id',
-            ['id' => $sessionId, 'status' => SettlementStatus::FAILED, 'now' => $this->now()],
+            'UPDATE fd_prism_payment_settlement
+             SET status = :failed, updated_at = :now
+             WHERE checkout_session_id = :id AND status = :settling',
+            [
+                'id' => $sessionId,
+                'failed' => SettlementStatus::FAILED,
+                'settling' => SettlementStatus::SETTLING,
+                'now' => $this->now(),
+            ],
         );
     }
 
@@ -254,5 +278,10 @@ final class DbalCredentialStore implements CredentialStore
     private function now(): string
     {
         return (new \DateTimeImmutable())->format('Y-m-d H:i:s.v');
+    }
+
+    private function secondsAgo(int $seconds): string
+    {
+        return (new \DateTimeImmutable())->modify(sprintf('-%d seconds', $seconds))->format('Y-m-d H:i:s.v');
     }
 }

@@ -146,6 +146,11 @@ final readonly class PrismSettlementRecord
         return SettlementStatus::SETTLED === $this->status;
     }
 
+    public function isSettling(): bool
+    {
+        return SettlementStatus::SETTLING === $this->status;
+    }
+
     public function isFailed(): bool
     {
         return SettlementStatus::FAILED === $this->status;
