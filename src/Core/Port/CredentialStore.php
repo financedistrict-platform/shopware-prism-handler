@@ -59,6 +59,8 @@ interface CredentialStore
 
     public function markFailed(string $sessionId): void;
 
+    public function markUnresolved(string $sessionId): void;
+
     /**
      * Link the (session-keyed) settlement row to its placed order, so it can be read by order id.
      */

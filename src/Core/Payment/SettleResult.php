@@ -20,4 +20,14 @@ final readonly class SettleResult
         public ?string $errorReason,
     ) {
     }
+
+    public function isPending(): bool
+    {
+        return !$this->success && 'settlement_pending' === $this->errorReason;
+    }
+
+    public function needsReview(): bool
+    {
+        return !$this->success && \in_array($this->errorReason, ['authorization_consumed', 'settlement_unresolved'], true);
+    }
 }

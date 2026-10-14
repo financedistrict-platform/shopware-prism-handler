@@ -91,7 +91,7 @@ final readonly class PrismHttpClient implements PrismGateway
         }
 
         if ($status < 200 || $status >= 300) {
-            throw new PrismApiException(sprintf('Prism %s %s failed: HTTP %d %s', $method, $path, $status, $raw));
+            throw new PrismApiException(sprintf('Prism %s %s failed: HTTP %d %s', $method, $path, $status, $raw), $status);
         }
 
         $decoded = json_decode($raw, true);

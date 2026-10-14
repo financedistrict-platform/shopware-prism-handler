@@ -1,3 +1,13 @@
+# 0.7.10
+
+A settle whose outcome is unknown no longer loses the buyer's payment. When the settle call times out,
+fails in transit, or Prism answers `settlement_pending`, the checkout is held as `complete_in_progress`
+and the stored credential is kept. Retrying with the same credential asks Prism again once the claim is
+older than 90 seconds, and Prism returns the same result for an authorization it has already seen.
+When Prism reports the authorization expired without a known result, the checkout moves to
+`requires_escalation` and is left to the merchant. A definite refusal (HTTP 4xx other than 408 and 429,
+or a decline reason) still marks the settlement failed.
+
 # 0.7.9
 
 The settlement record's terminal state is enforced in SQL on every write. Marking a settlement failed

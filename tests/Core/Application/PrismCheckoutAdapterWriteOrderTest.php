@@ -7,6 +7,7 @@ namespace Fd\PrismPayment\Tests\Core\Application;
 use Fd\PrismPayment\Core\Payment\SettleResult;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Core\Ucp\HandlerId;
+use Ucp\Sdk\Enum\CheckoutStatus;
 use Ucp\Sdk\Exception\ValidationException;
 use Ucp\Sdk\Model\Checkout\Checkout;
 use Ucp\Sdk\Model\Checkout\CheckoutCompleteRequest;
@@ -181,13 +182,12 @@ final class PrismCheckoutAdapterWriteOrderTest extends CheckoutAdapterTestCase
         $this->store->expects(self::never())->method('capture');
         $this->gateway->expects(self::never())->method('settle');
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('already in progress');
-
-        $this->adapter()->completeCheckoutFromRequest(
+        $held = $this->adapter()->completeCheckoutFromRequest(
             new CheckoutCompleteRequest(self::SESSION, [$this->instrument(HandlerId::PRISM)]),
             new RequestContext(),
         );
+
+        self::assertSame(CheckoutStatus::CompleteInProgress, $held->status);
     }
 
     private function update(PaymentInstrument $payment): CheckoutUpdateRequest
