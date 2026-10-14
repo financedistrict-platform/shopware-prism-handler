@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\Tests\Infrastructure\Persistence;
 
 use Doctrine\DBAL\Connection;
+use Fd\PrismPayment\Core\Settlement\SettleClaim;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Infrastructure\Persistence\DbalCredentialStore;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -60,6 +61,7 @@ final class DbalCredentialStoreTest extends TestCase
     {
         yield 'settled' => [SettlementStatus::SETTLED];
         yield 'settling' => [SettlementStatus::SETTLING];
+        yield 'unresolved' => [SettlementStatus::UNRESOLVED];
     }
 
     #[DataProvider('releasableStatuses')]
@@ -87,12 +89,12 @@ final class DbalCredentialStoreTest extends TestCase
     public function testReleaseToBaseDuringSettleKeepsSettlementCompletable(): void
     {
         $this->seed(SettlementStatus::PENDING);
-        self::assertTrue($this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::Fresh, $this->store->claim(self::SESSION_ID));
 
         $this->store->releaseToBase(self::SESSION_ID);
         $this->store->markSettled(self::SESSION_ID, '0xabc', 'base');
 
-        self::assertFalse($this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
         self::assertSame(
             ['status' => SettlementStatus::SETTLED, 'credential' => self::CREDENTIAL],
             $this->row(),
@@ -185,6 +187,100 @@ final class DbalCredentialStoreTest extends TestCase
         yield 'settling' => [SettlementStatus::SETTLING];
     }
 
+    public function testClaimTakesOverASettlingRowOlderThanTheSettleWindow(): void
+    {
+        $this->seed(SettlementStatus::SETTLING, updatedAt: '2026-09-30 00:00:00.000');
+
+        self::assertSame(SettleClaim::Resumed, $this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
+    }
+
+    public function testClaimPrefersTheFreshClaimOverATakeoverWhenThePendingRowIsOld(): void
+    {
+        $this->seed(SettlementStatus::PENDING, updatedAt: '2026-09-30 00:00:00.000');
+
+        self::assertSame(SettleClaim::Fresh, $this->store->claim(self::SESSION_ID));
+    }
+
+    public function testClaimTakesOverASettlingRowThatNeverRecordedAnUpdate(): void
+    {
+        $this->seed(SettlementStatus::SETTLING);
+
+        self::assertSame(SettleClaim::Resumed, $this->store->claim(self::SESSION_ID));
+    }
+
+    public function testClaimLeavesAFreshSettlingRowAlone(): void
+    {
+        $this->seed(SettlementStatus::SETTLING, updatedAt: (new \DateTimeImmutable())->format('Y-m-d H:i:s.v'));
+
+        self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
+    }
+
+    #[DataProvider('unclaimableStatuses')]
+    public function testClaimNeverTakesATerminalOrFailedRow(string $status): void
+    {
+        $this->seed($status, updatedAt: '2026-09-30 00:00:00.000');
+
+        self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unclaimableStatuses(): iterable
+    {
+        yield 'settled' => [SettlementStatus::SETTLED];
+        yield 'failed' => [SettlementStatus::FAILED];
+        yield 'unresolved' => [SettlementStatus::UNRESOLVED];
+    }
+
+    public function testMarkUnresolvedMovesASettlingRow(): void
+    {
+        $this->seed(SettlementStatus::SETTLING);
+
+        $this->store->markUnresolved(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => SettlementStatus::UNRESOLVED, 'credential' => self::CREDENTIAL],
+            $this->row(),
+        );
+    }
+
+    #[DataProvider('nonSettlingStatuses')]
+    public function testMarkUnresolvedOnlyActsOnASettlingRow(string $status): void
+    {
+        $this->seed($status);
+
+        $this->store->markUnresolved(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => $status, 'credential' => self::CREDENTIAL],
+            $this->row(),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function nonSettlingStatuses(): iterable
+    {
+        yield 'pending' => [SettlementStatus::PENDING];
+        yield 'failed' => [SettlementStatus::FAILED];
+        yield 'settled' => [SettlementStatus::SETTLED];
+    }
+
+    public function testMarkFailedLeavesAnUnresolvedRowUntouched(): void
+    {
+        $this->seed(SettlementStatus::UNRESOLVED);
+
+        $this->store->markFailed(self::SESSION_ID);
+
+        self::assertSame(
+            ['status' => SettlementStatus::UNRESOLVED, 'credential' => self::CREDENTIAL],
+            $this->row(),
+        );
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -198,17 +294,22 @@ final class DbalCredentialStoreTest extends TestCase
         return $statement->fetch(\PDO::FETCH_ASSOC);
     }
 
-    private function seed(string $status, ?string $credential = self::CREDENTIAL, ?string $offer = null): void
-    {
+    private function seed(
+        string $status,
+        ?string $credential = self::CREDENTIAL,
+        ?string $offer = null,
+        ?string $updatedAt = null,
+    ): void {
         $this->pdo->prepare(
-            'INSERT INTO fd_prism_payment_settlement (checkout_session_id, credential, status, offered_accepts, created_at)
-             VALUES (:id, :credential, :status, :offer, :now)',
+            'INSERT INTO fd_prism_payment_settlement (checkout_session_id, credential, status, offered_accepts, created_at, updated_at)
+             VALUES (:id, :credential, :status, :offer, :now, :updatedAt)',
         )->execute([
             'id' => self::SESSION_ID,
             'credential' => $credential,
             'status' => $status,
             'offer' => $offer,
             'now' => '2026-09-30 00:00:00.000',
+            'updatedAt' => $updatedAt,
         ]);
     }
 

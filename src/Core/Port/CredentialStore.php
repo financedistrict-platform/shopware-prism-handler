@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\Core\Port;
 
 use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
+use Fd\PrismPayment\Core\Settlement\SettleClaim;
 
 /**
  * Durable per-session store for the x402 credential + settlement status. Implemented by
@@ -47,17 +48,21 @@ interface CredentialStore
     public function capture(string $sessionId, array $credential): void;
 
     /**
-     * Atomically claim the settle: move pending -> settling and report whether THIS caller won.
-     * Returns true only if exactly one row transitioned (the F1 gate); false means the row was
-     * not pending (already settling/settled/failed, or absent), and the caller must not settle.
+     * Atomically claim the settle and report which claim THIS caller won. Fresh: pending -> settling.
+     * Resumed: a settling row whose earlier attempt outlived the settle window was taken over, so a
+     * previous call may already have reached Prism. None: the row was not claimable (live settling,
+     * settled, failed, unresolved, or absent) and the caller must not settle. Each claim is exactly
+     * one row transitioning (the F1 gate).
      */
-    public function claim(string $sessionId): bool;
+    public function claim(string $sessionId): SettleClaim;
 
     public function load(string $sessionId): ?PrismSettlementRecord;
 
     public function markSettled(string $sessionId, string $transactionHash, string $network): void;
 
     public function markFailed(string $sessionId): void;
+
+    public function markUnresolved(string $sessionId): void;
 
     /**
      * Link the (session-keyed) settlement row to its placed order, so it can be read by order id.

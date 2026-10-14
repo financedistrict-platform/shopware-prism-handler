@@ -94,8 +94,27 @@ final readonly class PrismSettlementRecord
         return SettlementStatus::SETTLED === $this->status;
     }
 
+    public function holdsCredential(array $credential): bool
+    {
+        return null !== $this->credential && self::canonical($this->credential) === self::canonical($credential);
+    }
+
     public function isFailed(): bool
     {
         return SettlementStatus::FAILED === $this->status;
+    }
+
+    private static function canonical(mixed $value): mixed
+    {
+        if (!\is_array($value)) {
+            return $value;
+        }
+
+        $value = array_map(self::canonical(...), $value);
+        if (!array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
     }
 }

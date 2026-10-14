@@ -26,4 +26,6 @@ final class SettlementStatus
     public const SETTLED = 'settled';
 
     public const FAILED = 'failed';
+
+    public const UNRESOLVED = 'unresolved';
 }
