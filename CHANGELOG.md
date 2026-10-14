@@ -1,12 +1,20 @@
 # 0.7.10
 
 A settle whose outcome is unknown no longer loses the buyer's payment. When the settle call times out,
-fails in transit, or Prism answers `settlement_pending`, the checkout is held as `complete_in_progress`
-and the stored credential is kept. Retrying with the same credential asks Prism again once the claim is
-older than 90 seconds, and Prism returns the same result for an authorization it has already seen.
-When Prism reports the authorization expired without a known result, the checkout moves to
-`requires_escalation` and is left to the merchant. A definite refusal (HTTP 4xx other than 408 and 429,
-or a decline reason) still marks the settlement failed.
+fails in transit, or Prism answers with any failure that is not known to happen before the transaction is
+sent (including `unexpected_settle_error`, `receipt_timeout` and `settlement_pending`), the checkout is held
+as `complete_in_progress` and the stored credential is kept. Only the same credential may retry, and only
+once the claim is older than 90 seconds. Prism's current answers need no change on its side: the plugin
+reads an unlisted reason as an unknown outcome.
+
+A failure counts as a definite decline only when it is an HTTP 4xx other than 408 and 429, or a reason
+that the gateway and facilitator return before anything is sent (for example `unsupported_network`,
+`sanctions_hit`, `insufficient_funds`, a bad signature or time bounds, or `authorization_mismatch`).
+Only then may the buyer sign a new payment.
+
+A retry that takes over an earlier attempt and does not succeed moves the checkout to `requires_escalation`
+and is left to the merchant, because the earlier attempt may already have landed. `authorization_consumed`
+and `settlement_unresolved` do the same on any attempt. A retry that gets no answer at all stays held.
 
 # 0.7.9
 

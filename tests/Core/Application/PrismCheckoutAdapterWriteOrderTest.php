@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\Tests\Core\Application;
 
 use Fd\PrismPayment\Core\Payment\SettleResult;
+use Fd\PrismPayment\Core\Settlement\SettleClaim;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Core\Ucp\HandlerId;
 use Ucp\Sdk\Enum\CheckoutStatus;
@@ -146,7 +147,7 @@ final class PrismCheckoutAdapterWriteOrderTest extends CheckoutAdapterTestCase
         $this->store->method('capture')->willReturnCallback(static function () use (&$calls): void {
             $calls[] = 'capture';
         });
-        $this->store->method('claim')->willReturn(true);
+        $this->store->method('claim')->willReturn(SettleClaim::Fresh);
         // loaded by the state guard, then by complete(), then re-read after the settle lands
         $this->store->method('load')->willReturnOnConsecutiveCalls(
             $this->record(SettlementStatus::PENDING, null),
@@ -177,7 +178,7 @@ final class PrismCheckoutAdapterWriteOrderTest extends CheckoutAdapterTestCase
             $this->record(SettlementStatus::SETTLING, $this->credential()),
         );
         $this->inner->method('completeCheckout')->willReturn($this->completed(12.50));
-        $this->store->method('claim')->willReturn(false);
+        $this->store->method('claim')->willReturn(SettleClaim::None);
 
         $this->store->expects(self::never())->method('capture');
         $this->gateway->expects(self::never())->method('settle');

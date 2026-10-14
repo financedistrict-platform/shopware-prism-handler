@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\Tests\Infrastructure\Persistence;
 
 use Doctrine\DBAL\Connection;
+use Fd\PrismPayment\Core\Settlement\SettleClaim;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Infrastructure\Persistence\DbalCredentialStore;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -88,12 +89,12 @@ final class DbalCredentialStoreTest extends TestCase
     public function testReleaseToBaseDuringSettleKeepsSettlementCompletable(): void
     {
         $this->seed(SettlementStatus::PENDING);
-        self::assertTrue($this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::Fresh, $this->store->claim(self::SESSION_ID));
 
         $this->store->releaseToBase(self::SESSION_ID);
         $this->store->markSettled(self::SESSION_ID, '0xabc', 'base');
 
-        self::assertFalse($this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
         self::assertSame(
             ['status' => SettlementStatus::SETTLED, 'credential' => self::CREDENTIAL],
             $this->row(),
@@ -190,22 +191,29 @@ final class DbalCredentialStoreTest extends TestCase
     {
         $this->seed(SettlementStatus::SETTLING, updatedAt: '2026-09-30 00:00:00.000');
 
-        self::assertTrue($this->store->claim(self::SESSION_ID));
-        self::assertFalse($this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::Resumed, $this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
+    }
+
+    public function testClaimPrefersTheFreshClaimOverATakeoverWhenThePendingRowIsOld(): void
+    {
+        $this->seed(SettlementStatus::PENDING, updatedAt: '2026-09-30 00:00:00.000');
+
+        self::assertSame(SettleClaim::Fresh, $this->store->claim(self::SESSION_ID));
     }
 
     public function testClaimTakesOverASettlingRowThatNeverRecordedAnUpdate(): void
     {
         $this->seed(SettlementStatus::SETTLING);
 
-        self::assertTrue($this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::Resumed, $this->store->claim(self::SESSION_ID));
     }
 
     public function testClaimLeavesAFreshSettlingRowAlone(): void
     {
         $this->seed(SettlementStatus::SETTLING, updatedAt: (new \DateTimeImmutable())->format('Y-m-d H:i:s.v'));
 
-        self::assertFalse($this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
     }
 
     #[DataProvider('unclaimableStatuses')]
@@ -213,7 +221,7 @@ final class DbalCredentialStoreTest extends TestCase
     {
         $this->seed($status, updatedAt: '2026-09-30 00:00:00.000');
 
-        self::assertFalse($this->store->claim(self::SESSION_ID));
+        self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
     }
 
     /**

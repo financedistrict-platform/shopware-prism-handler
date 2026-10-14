@@ -226,6 +226,119 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
         }
     }
 
+    public static function unknownOutcomeReasons(): iterable
+    {
+        yield 'gateway catch-all' => ['unexpected_settle_error'];
+        yield 'receipt not seen' => ['receipt_timeout'];
+        yield 'pending' => ['settlement_pending'];
+        yield 'execution failed' => ['execution_failed: connection reset'];
+        yield 'settlement failed' => ['settlement_failed'];
+        yield 'transaction reverted' => ['transaction_reverted'];
+        yield 'facilitator default' => ['facilitator_settlement_failed'];
+        yield 'unlisted reason' => ['some_reason_from_a_newer_gateway'];
+        yield 'no reason' => [null];
+    }
+
+    #[DataProvider('unknownOutcomeReasons')]
+    public function testUnknownOutcomeReasonsHoldTheOrderAndNeverFreeTheBuyerToResign(?string $reason): void
+    {
+        $this->gateway->script = [new SettleResult(false, '', '', null, $reason)];
+
+        $held = $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+
+        self::assertSame(CheckoutStatus::CompleteInProgress, $held->status);
+        self::assertSame(SettlementStatus::SETTLING, $this->rowStatus());
+        self::assertSame(0, $this->failCalls);
+        self::assertSame(0, $this->paidCalls);
+    }
+
+    public static function preBroadcastReasons(): iterable
+    {
+        foreach ([
+            'unsupported_network',
+            'unsupported_token',
+            'point_of_service_not_found',
+            'seller_wallet_not_configured',
+            'sanctions_hit',
+            'risk_threshold_exceeded',
+            'affiliate_residual_overflow',
+            'affiliate_settlement_unavailable',
+            'cashback_outside_campaign_bounds',
+            'invalid_payment_accepted_mismatch',
+            'invalid_signature',
+            'insufficient_funds',
+            'balance_check_failed',
+            'balance_verification_failed',
+            'invalid_exact_evm_payload_authorization_expired',
+            'invalid_exact_evm_payload_authorization_not_yet_valid',
+            'invalid_exact_evm_payload_authorization_signature',
+            'invalid_exact_evm_payload_recipient_mismatch',
+            'invalid_authorization_recipient',
+            'validation_failed: InvalidMint',
+            'unknown_token: 0xabc on chain 84532',
+            'authorization_mismatch',
+        ] as $reason) {
+            yield $reason => [$reason];
+        }
+    }
+
+    #[DataProvider('preBroadcastReasons')]
+    public function testReasonsKnownToHappenBeforeBroadcastStillDeclineTheOrder(string $reason): void
+    {
+        $this->gateway->script = [new SettleResult(false, '', '', null, $reason)];
+
+        try {
+            $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+            self::fail('A decline known to precede broadcast must fail the checkout.');
+        } catch (ValidationException) {
+            self::assertSame(SettlementStatus::FAILED, $this->rowStatus());
+            self::assertSame(1, $this->failCalls);
+        }
+    }
+
+    public static function resumedFailures(): iterable
+    {
+        yield 'used nonce' => [new SettleResult(false, '', '', null, 'execution_failed: Transaction would revert: authorization is used or canceled')];
+        yield 'decline reason' => [new SettleResult(false, '', '', null, 'insufficient_funds')];
+        yield 'catch-all' => [new SettleResult(false, '', '', null, 'unexpected_settle_error')];
+        yield 'pending again' => [new SettleResult(false, '', '', null, 'settlement_pending')];
+        yield 'consumed' => [new SettleResult(false, '', '', null, 'authorization_consumed')];
+        yield 'client error' => [new PrismApiException('Prism POST /api/v2/payment/settle failed: HTTP 400', 400)];
+    }
+
+    #[DataProvider('resumedFailures')]
+    public function testResumedRetryThatIsNotSuccessIsHeldForReviewNeverFailed(SettleResult|\Throwable $second): void
+    {
+        $this->gateway->script = [new PrismApiException('timeout'), $second];
+        $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+        $this->expireClaim();
+
+        $held = $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+
+        self::assertSame(CheckoutStatus::RequiresEscalation, $held->status);
+        self::assertSame(SettlementStatus::UNRESOLVED, $this->rowStatus());
+        self::assertSame(0, $this->failCalls);
+        self::assertSame(0, $this->paidCalls);
+        self::assertSame($this->gateway->settled[0], $this->gateway->settled[1]);
+
+        $this->expireClaim();
+        $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+        self::assertCount(2, $this->gateway->settled);
+    }
+
+    public function testResumedRetryWithoutAnAnswerStaysHeldForTheSameCredential(): void
+    {
+        $this->gateway->script = [new PrismApiException('timeout'), new PrismApiException('timeout again')];
+        $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+        $this->expireClaim();
+
+        $held = $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+
+        self::assertSame(CheckoutStatus::CompleteInProgress, $held->status);
+        self::assertSame(SettlementStatus::SETTLING, $this->rowStatus());
+        self::assertSame(0, $this->failCalls);
+    }
+
     public static function reviewReasons(): iterable
     {
         yield 'authorization consumed' => ['authorization_consumed'];

@@ -7,6 +7,7 @@ namespace Fd\PrismPayment\Infrastructure\Persistence;
 use Doctrine\DBAL\Connection;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
+use Fd\PrismPayment\Core\Settlement\SettleClaim;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 
 /**
@@ -137,23 +138,38 @@ final class DbalCredentialStore implements CredentialStore
         );
     }
 
-    public function claim(string $sessionId): bool
+    public function claim(string $sessionId): SettleClaim
     {
-        $affected = $this->connection->executeStatement(
+        $fresh = $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
              SET status = :settling, updated_at = :now
-             WHERE checkout_session_id = :id
-               AND (status = :pending OR (status = :settling AND COALESCE(updated_at, created_at) < :stale))',
+             WHERE checkout_session_id = :id AND status = :pending',
             [
                 'id' => $sessionId,
                 'settling' => SettlementStatus::SETTLING,
                 'pending' => SettlementStatus::PENDING,
                 'now' => $this->now(),
+            ],
+        );
+
+        if (1 === (int) $fresh) {
+            return SettleClaim::Fresh;
+        }
+
+        $resumed = $this->connection->executeStatement(
+            'UPDATE fd_prism_payment_settlement
+             SET updated_at = :now
+             WHERE checkout_session_id = :id
+               AND status = :settling AND COALESCE(updated_at, created_at) < :stale',
+            [
+                'id' => $sessionId,
+                'settling' => SettlementStatus::SETTLING,
+                'now' => $this->now(),
                 'stale' => $this->now(-self::SETTLE_WINDOW_SECONDS),
             ],
         );
 
-        return 1 === (int) $affected;
+        return 1 === (int) $resumed ? SettleClaim::Resumed : SettleClaim::None;
     }
 
     public function load(string $sessionId): ?PrismSettlementRecord

@@ -15,6 +15,7 @@ use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
+use Fd\PrismPayment\Core\Settlement\SettleClaim;
 use Fd\PrismPayment\Core\Settlement\SettlementStateMachine;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Core\Ucp\InstrumentAcceptance;
@@ -343,7 +344,8 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
     private function settleOnce(string $id, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
     {
-        if (!$this->store->claim($id)) {
+        $claim = $this->store->claim($id);
+        if (SettleClaim::None === $claim) {
             $current = $this->store->load($id);
             if (null !== $current && $current->isSettled()) {
                 return $current;
@@ -363,10 +365,10 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             ));
         }
 
-        return $this->settle($id, $record, $context);
+        return $this->settle($id, $record, $context, SettleClaim::Resumed === $claim);
     }
 
-    private function settle(string $sessionId, PrismSettlementRecord $record, RequestContext $context): PrismSettlementRecord
+    private function settle(string $sessionId, PrismSettlementRecord $record, RequestContext $context, bool $resumed): PrismSettlementRecord
     {
         \assert(null !== $record->credential);
 
@@ -376,6 +378,10 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             $result = $this->client->settle($config, $record->credential);
         } catch (PrismApiException $e) {
             if ($e->refusedBeforeSettling()) {
+                if ($resumed) {
+                    $this->holdForReview($sessionId);
+                }
+
                 $this->store->markFailed($sessionId);
 
                 throw new ValidationException('Prism refused the payment settlement.');
@@ -388,19 +394,17 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             );
         }
 
-        if ($result->isPending()) {
-            throw new SettlementPendingException(
-                sprintf('Settlement for checkout %s has no confirmed outcome yet.', $sessionId),
-            );
-        }
-
-        if ($result->needsReview()) {
-            $this->store->markUnresolved($sessionId);
-
-            throw new SettlementReviewException(sprintf('Settlement for checkout %s needs review.', $sessionId));
-        }
-
         if (!$result->success) {
+            if ($result->needsReview() || $resumed) {
+                $this->holdForReview($sessionId);
+            }
+
+            if ($result->isPending()) {
+                throw new SettlementPendingException(
+                    sprintf('Settlement for checkout %s has no confirmed outcome yet.', $sessionId),
+                );
+            }
+
             $this->store->markFailed($sessionId);
 
             throw new ValidationException(sprintf(
@@ -420,6 +424,13 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         return $refreshed;
+    }
+
+    private function holdForReview(string $sessionId): never
+    {
+        $this->store->markUnresolved($sessionId);
+
+        throw new SettlementReviewException(sprintf('Settlement for checkout %s needs review.', $sessionId));
     }
 
     private function withStatus(Checkout $checkout, CheckoutStatus $status): Checkout
