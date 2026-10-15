@@ -26,6 +26,7 @@ Shopware.Component.register('fd-prism-payment-card', {
             // Raw facts from the endpoint when this is a settled Prism order; null otherwise (card hides).
             settlement: null,
             loadedForOrderId: null,
+            summary: null,
         };
     },
 
@@ -100,6 +101,36 @@ Shopware.Component.register('fd-prism-payment-card', {
             }).format(date);
         },
 
+        netReceivedText() {
+            const s = this.summary;
+            if (!s) {
+                return '…';
+            }
+            if (s.state === 'confirmed') {
+                return `${s.net} ${s.asset}`;
+            }
+            if (s.state === 'pending') {
+                return 'Pending';
+            }
+
+            return 'Unavailable';
+        },
+
+        refundLimitText() {
+            const s = this.summary;
+            if (!s) {
+                return '…';
+            }
+            if (s.state === 'confirmed') {
+                return `${s.net} ${s.asset}`;
+            }
+            if (s.state === 'pending') {
+                return 'Pending';
+            }
+
+            return 'Refund limit unavailable — check Prism portal';
+        },
+
         prismUrl() {
             return derivePrismSalesUrl(this.settlement?.gatewayUrl, {
                 tx: this.settlement?.txHash,
@@ -146,10 +177,27 @@ Shopware.Component.register('fd-prism-payment-card', {
                 );
 
                 this.settlement = response.data?.settled ? response.data : null;
+
+                if (this.settlement) {
+                    await this.loadSummary(orderId, httpClient, getToken);
+                }
             } catch (e) {
                 // Never surface an error card — a failed read just hides the card (as if not a
                 // Prism order). The native Payment card still shows the order's paid status.
                 this.settlement = null;
+            }
+        },
+
+        async loadSummary(orderId, httpClient, getToken) {
+            try {
+                const response = await httpClient.get(
+                    `_action/fd-prism-payment/order/${orderId}/settlement-summary`,
+                    { headers: { Authorization: `Bearer ${getToken()}` } },
+                );
+
+                this.summary = response.data ?? { state: 'unavailable' };
+            } catch (e) {
+                this.summary = { state: 'unavailable' };
             }
         },
 

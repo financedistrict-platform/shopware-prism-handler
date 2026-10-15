@@ -21,6 +21,7 @@ final readonly class SettlementView
         public ?string $fiatAmount,
         public ?string $fiatCurrency,
         public ?string $payer,
+        public ?string $salesChannelId = null,
     ) {
     }
 }

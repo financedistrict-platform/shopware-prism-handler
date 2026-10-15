@@ -8,6 +8,7 @@ use Doctrine\DBAL\Connection;
 use Fd\PrismPayment\Core\Port\SettlementReadModel;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Core\Settlement\SettlementView;
+use Shopware\Core\Defaults;
 
 /**
  * DBAL-backed {@see SettlementReadModel}: projects the display facts out of the settlement row's
@@ -25,11 +26,17 @@ final class DbalSettlementReadModel implements SettlementReadModel
     public function findByOrderId(string $orderId): ?SettlementView
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT credential, offered_accepts, transaction_hash, network, updated_at
-             FROM fd_prism_payment_settlement
-             WHERE order_id = UNHEX(:orderId) AND status = :settled
+            'SELECT s.credential, s.offered_accepts, s.transaction_hash, s.network, s.updated_at,
+                    LOWER(HEX(o.sales_channel_id)) AS sales_channel_id
+             FROM fd_prism_payment_settlement s
+             LEFT JOIN `order` o ON o.id = s.order_id AND o.version_id = UNHEX(:liveVersion)
+             WHERE s.order_id = UNHEX(:orderId) AND s.status = :settled
              LIMIT 1',
-            ['orderId' => $orderId, 'settled' => SettlementStatus::SETTLED],
+            [
+                'orderId' => $orderId,
+                'settled' => SettlementStatus::SETTLED,
+                'liveVersion' => Defaults::LIVE_VERSION,
+            ],
         );
 
         if (false === $row) {
@@ -52,6 +59,7 @@ final class DbalSettlementReadModel implements SettlementReadModel
             fiatAmount: isset($offer['quotedAmount']) ? (string) $offer['quotedAmount'] : null,
             fiatCurrency: isset($offer['quotedCurrency']) ? (string) $offer['quotedCurrency'] : null,
             payer: $payload['payload']['authorization']['from'] ?? null,
+            salesChannelId: null !== $row['sales_channel_id'] ? (string) $row['sales_channel_id'] : null,
         );
     }
 

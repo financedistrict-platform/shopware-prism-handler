@@ -13,6 +13,7 @@ use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
 use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Port\SettlementReadModel;
+use Fd\PrismPayment\Core\Port\SettlementSummarySource;
 use Fd\PrismPayment\Infrastructure\Config\SystemConfigResolver;
 use Fd\PrismPayment\Infrastructure\Http\HttpHandlerDeclarationSource;
 use Fd\PrismPayment\Infrastructure\Http\PrismHttpClient;
@@ -41,6 +42,7 @@ return static function (ContainerConfigurator $container): void {
     // type-hint the abstraction (and be tested against in-memory fakes). The implementations
     // themselves are registered + autowired by the load() above.
     $services->alias(PrismGateway::class, PrismHttpClient::class);
+    $services->alias(SettlementSummarySource::class, PrismHttpClient::class);
     $services->alias(CredentialStore::class, DbalCredentialStore::class);
     $services->alias(SettlementReadModel::class, DbalSettlementReadModel::class);
     $services->alias(ConfigResolver::class, SystemConfigResolver::class);
