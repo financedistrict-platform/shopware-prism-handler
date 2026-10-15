@@ -22,7 +22,20 @@ final class PrismSettlementController extends AbstractController
     public function __construct(
         private readonly SettlementReadModel $readModel,
         private readonly ConfigResolver $configResolver,
+        private readonly SettlementSummaryReader $summaryReader,
     ) {
+    }
+
+    #[Route(
+        path: '/api/_action/fd-prism-payment/order/{orderId}/settlement-summary',
+        name: 'api.action.fd_prism_payment.order.settlement_summary',
+        requirements: ['orderId' => '[0-9a-fA-F]{32}'],
+        defaults: ['_acl' => ['order:read']],
+        methods: ['GET'],
+    )]
+    public function settlementSummary(string $orderId): JsonResponse
+    {
+        return new JsonResponse($this->summaryReader->forOrder($orderId)?->toArray() ?? ['state' => 'none']);
     }
 
     #[Route(

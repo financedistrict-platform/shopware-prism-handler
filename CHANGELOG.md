@@ -1,3 +1,10 @@
+# 0.7.11
+
+The Prism payment card on the order page shows "Net received" and "Refund up to". The plugin asks Prism
+for the payment's settlement split with the API key of the order's sales channel. The card shows the
+amount once the payment is confirmed, "Pending" while it is still on its way, and "Refund limit
+unavailable — check Prism portal" when Prism cannot answer. It never shows the gross amount as the limit.
+
 # 0.7.10
 
 A settle whose outcome is unknown no longer loses the buyer's payment. When the settle call times out,
