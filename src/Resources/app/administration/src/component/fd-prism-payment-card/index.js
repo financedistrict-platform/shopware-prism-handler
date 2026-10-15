@@ -189,15 +189,22 @@ Shopware.Component.register('fd-prism-payment-card', {
         },
 
         async loadSummary(orderId, httpClient, getToken) {
+            this.summary = null;
+
+            let summary;
             try {
                 const response = await httpClient.get(
                     `_action/fd-prism-payment/order/${orderId}/settlement-summary`,
                     { headers: { Authorization: `Bearer ${getToken()}` } },
                 );
 
-                this.summary = response.data ?? { state: 'unavailable' };
+                summary = response.data ?? { state: 'unavailable' };
             } catch (e) {
-                this.summary = { state: 'unavailable' };
+                summary = { state: 'unavailable' };
+            }
+
+            if (this.loadedForOrderId === orderId) {
+                this.summary = summary;
             }
         },
 
