@@ -32,13 +32,16 @@ final readonly class SettleResult
     ) {
     }
 
+    /** An "already settled" answer without its transaction cannot be recorded yet, so it waits too. */
     public function isPending(): bool
     {
-        return !$this->success && \in_array($this->errorReason, self::PENDING_REASONS, true);
+        return !$this->success
+            && (\in_array($this->errorReason, self::PENDING_REASONS, true)
+                || (self::ALREADY_SETTLED === $this->errorReason && '' === $this->transaction));
     }
 
     public function isAlreadySettled(): bool
     {
-        return !$this->success && self::ALREADY_SETTLED === $this->errorReason;
+        return !$this->success && self::ALREADY_SETTLED === $this->errorReason && '' !== $this->transaction;
     }
 }

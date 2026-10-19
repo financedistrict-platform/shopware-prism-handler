@@ -53,6 +53,14 @@ final class SettleResultTest extends TestCase
         self::assertFalse($result->isPending());
     }
 
+    public function testAlreadySettledWithoutItsTransactionWaits(): void
+    {
+        $result = new SettleResult(false, '', 'eip155:97', null, 'checkout_already_settled');
+
+        self::assertFalse($result->isAlreadySettled());
+        self::assertTrue($result->isPending());
+    }
+
     public function testSuccessIsNeitherPendingNorAlreadySettled(): void
     {
         $result = new SettleResult(true, '0xabc', 'eip155:84532', null, null);

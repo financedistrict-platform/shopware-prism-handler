@@ -36,7 +36,7 @@ use Ucp\Sdk\Model\Common\Money;
 abstract class CheckoutAdapterTestCase extends TestCase
 {
     protected const SESSION = 'cs_1';
-    protected const ORDER = 'order-1';
+    protected const ORDER = '0a1b2c3d4e5f60718293a4b5c6d7e8f9';
     protected const TRANSACTION = 'tx-1';
     protected const QUOTE = '12.50';
 
