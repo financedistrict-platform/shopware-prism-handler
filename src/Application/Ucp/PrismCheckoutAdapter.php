@@ -9,7 +9,6 @@ use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Core\Exception\PrismApiException;
 use Fd\PrismPayment\Core\Exception\SettlementPendingException;
-use Fd\PrismPayment\Core\Exception\SettlementReviewException;
 use Fd\PrismPayment\Core\Payment\AcceptsMatcher;
 use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\CredentialStore;
@@ -73,11 +72,9 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             return $checkout;
         }
 
-        return match ($this->store->load($id)?->status) {
-            SettlementStatus::SETTLING => $this->withStatus($checkout, CheckoutStatus::CompleteInProgress),
-            SettlementStatus::UNRESOLVED => $this->withStatus($checkout, CheckoutStatus::RequiresEscalation),
-            default => $checkout,
-        };
+        return SettlementStatus::SETTLING === $this->store->load($id)?->status
+            ? $this->withStatus($checkout, CheckoutStatus::CompleteInProgress)
+            : $checkout;
     }
 
     /**
@@ -141,18 +138,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             return $checkout;
         }
 
-        $credential = $this->validateCredential($instrument);
-
-        $existing = $this->store->load($request->id);
-        if (null !== $existing
-            && !$existing->isSettled()
-            && !$this->stateMachine->mayCapture($existing->status)
-            && !($this->stateMachine->mayResume($existing->status) && $existing->holdsCredential($credential))
-        ) {
-            throw new ValidationException('This checkout is already paid or being settled and cannot be updated.');
-        }
-
-        return $this->complete($request->id, $context, $credential);
+        return $this->complete($request->id, $context, $this->validateCredential($instrument));
     }
 
     /**
@@ -184,6 +170,12 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
 
         if (null !== $toCapture) {
             $record = $this->capturing($id, $toCapture, $record);
+        }
+
+        // The outcome of an earlier settle is unknown. A credential arriving now is sent to Prism to
+        // learn it, but never stored: the row only ever keeps an authorization Prism settled.
+        if (null !== $pending && SettlementStatus::SETTLING === $record?->status) {
+            $record = $record->withCredential($pending);
         }
 
         if (null === $record) {
@@ -230,8 +222,6 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
                 $record = $this->settleOnce($id, $record, $context);
             } catch (SettlementPendingException) {
                 return $this->withStatus($checkout, CheckoutStatus::CompleteInProgress);
-            } catch (SettlementReviewException) {
-                return $this->withStatus($checkout, CheckoutStatus::RequiresEscalation);
             } catch (ValidationException $e) {
                 $this->abandon($transaction);
 
@@ -296,6 +286,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         if (null === $offered
             || null === $submitted
             || !$this->acceptsMatcher->matches($offered, $submitted)
+            || !$record->namesOfferedResource()
         ) {
             throw new ValidationException(
                 'The submitted payment does not match any offer issued for this checkout.',
@@ -351,10 +342,6 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
                 return $current;
             }
 
-            if (SettlementStatus::UNRESOLVED === $current?->status) {
-                throw new SettlementReviewException(sprintf('Settlement for checkout %s needs review.', $id));
-            }
-
             if (SettlementStatus::SETTLING === $current?->status) {
                 throw new SettlementPendingException(sprintf('Settlement for checkout %s is already in progress.', $id));
             }
@@ -377,11 +364,7 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         try {
             $result = $this->client->settle($config, $record->credential);
         } catch (PrismApiException $e) {
-            if ($e->refusedBeforeSettling()) {
-                if ($resumed) {
-                    $this->holdForReview($sessionId);
-                }
-
+            if ($e->refusedBeforeSettling() && !$resumed) {
                 $this->store->markFailed($sessionId);
 
                 throw new ValidationException('Prism refused the payment settlement.');
@@ -394,12 +377,9 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             );
         }
 
-        if (!$result->success) {
-            if ($result->needsReview() || $resumed) {
-                $this->holdForReview($sessionId);
-            }
-
-            if ($result->isPending()) {
+        // A retry that fails says nothing about the earlier attempt, so the checkout stays held.
+        if (!$result->success && !$result->isAlreadySettled()) {
+            if ($result->isPending() || $resumed) {
                 throw new SettlementPendingException(
                     sprintf('Settlement for checkout %s has no confirmed outcome yet.', $sessionId),
                 );
@@ -413,7 +393,13 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
             ));
         }
 
-        $this->store->markSettled($sessionId, $result->transaction, $result->network);
+        // "Already settled" means another authorization paid this checkout; the one sent is unused.
+        $this->store->markSettled(
+            $sessionId,
+            $result->transaction,
+            $result->network,
+            $result->success ? $record->credential : null,
+        );
 
         $refreshed = $this->store->load($sessionId);
         if (null === $refreshed || !$refreshed->isSettled()) {
@@ -424,13 +410,6 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
         }
 
         return $refreshed;
-    }
-
-    private function holdForReview(string $sessionId): never
-    {
-        $this->store->markUnresolved($sessionId);
-
-        throw new SettlementReviewException(sprintf('Settlement for checkout %s needs review.', $sessionId));
     }
 
     private function withStatus(Checkout $checkout, CheckoutStatus $status): Checkout
@@ -485,7 +464,10 @@ final readonly class PrismCheckoutAdapter implements PaymentAwareCheckoutAdapter
     {
         $shopwareContext = Context::createDefaultContext();
 
-        if (\in_array($transaction['state'], self::AWAITING_PAYMENT, true)) {
+        // A transaction failed by an earlier declined attempt is paid by the retry that settled.
+        if (OrderTransactionStates::STATE_FAILED === $transaction['state']
+            || \in_array($transaction['state'], self::AWAITING_PAYMENT, true)
+        ) {
             $this->transactionStateHandler->paid($transaction['id'], $shopwareContext);
         }
 

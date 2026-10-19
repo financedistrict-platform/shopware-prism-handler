@@ -48,7 +48,9 @@ abstract class CheckoutAdapterTestCase extends TestCase
         'payTo' => '0x40a01003f7543a3a3ee64ffb05504173bdb1c4fd',
     ];
 
-    protected const OFFER = ['id' => HandlerId::PRISM, 'config' => ['accepts' => [self::ACCEPT]]];
+    protected const RESOURCE = 'https://shop.example/ucp/v1/checkout-sessions/cs_1';
+
+    protected const OFFER = ['id' => HandlerId::PRISM, 'config' => ['resource' => ['url' => self::RESOURCE], 'accepts' => [self::ACCEPT]]];
 
     protected PaymentAwareCheckoutAdapterInterface&MockObject $inner;
     protected CredentialStore&MockObject $store;
@@ -119,7 +121,7 @@ abstract class CheckoutAdapterTestCase extends TestCase
     {
         return [
             'x402Version' => 2,
-            'paymentPayload' => ['payload' => ['signature' => '0xsig']],
+            'paymentPayload' => ['resource' => ['url' => self::RESOURCE], 'payload' => ['signature' => '0xsig']],
             'paymentRequirements' => $requirements,
         ];
     }

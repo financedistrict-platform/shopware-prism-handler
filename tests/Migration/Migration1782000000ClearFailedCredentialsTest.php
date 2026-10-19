@@ -25,7 +25,6 @@ final class Migration1782000000ClearFailedCredentialsTest extends TestCase
             SettlementStatus::SETTLING,
             SettlementStatus::SETTLED,
             SettlementStatus::FAILED,
-            SettlementStatus::UNRESOLVED,
         ];
         $insert = $pdo->prepare('INSERT INTO fd_prism_payment_settlement VALUES (:id, :credential, :status)');
         foreach ($statuses as $status) {
@@ -40,7 +39,6 @@ final class Migration1782000000ClearFailedCredentialsTest extends TestCase
                 SettlementStatus::PENDING => self::CREDENTIAL,
                 SettlementStatus::SETTLED => self::CREDENTIAL,
                 SettlementStatus::SETTLING => self::CREDENTIAL,
-                SettlementStatus::UNRESOLVED => self::CREDENTIAL,
             ],
             $pdo->query('SELECT status, credential FROM fd_prism_payment_settlement ORDER BY status')->fetchAll(\PDO::FETCH_KEY_PAIR),
         );

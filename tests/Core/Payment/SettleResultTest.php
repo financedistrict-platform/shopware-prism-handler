@@ -10,69 +10,54 @@ use PHPUnit\Framework\TestCase;
 
 final class SettleResultTest extends TestCase
 {
-    public static function holdReasons(): iterable
+    public static function pendingReasons(): iterable
     {
-        yield 'catch-all' => ['unexpected_settle_error'];
-        yield 'receipt timeout' => ['receipt_timeout'];
         yield 'pending' => ['settlement_pending'];
-        yield 'used nonce' => ['execution_failed: authorization is used or canceled'];
-        yield 'unlisted' => ['brand_new_reason'];
-        yield 'empty' => [''];
-        yield 'null' => [null];
+        yield 'in progress' => ['checkout_settlement_in_progress'];
     }
 
-    #[DataProvider('holdReasons')]
-    public function testEveryFailureNotKnownToPrecedeBroadcastIsPending(?string $reason): void
+    #[DataProvider('pendingReasons')]
+    public function testOnlyTheStillRunningReasonsArePending(string $reason): void
     {
         $result = new SettleResult(false, '', '', null, $reason);
 
         self::assertTrue($result->isPending());
-        self::assertFalse($result->isDefiniteDecline());
-        self::assertFalse($result->needsReview());
+        self::assertFalse($result->isAlreadySettled());
     }
 
-    public static function declineReasons(): iterable
+    public static function finalReasons(): iterable
     {
-        yield 'unsupported network' => ['unsupported_network'];
-        yield 'sanctions' => ['sanctions_hit'];
-        yield 'insufficient funds' => ['insufficient_funds'];
-        yield 'bad signature' => ['invalid_exact_evm_payload_authorization_signature'];
-        yield 'prefixed validation' => ['validation_failed: InvalidMint'];
-        yield 'mismatch' => ['authorization_mismatch'];
+        yield 'quote not found' => ['quote_not_found'];
+        yield 'quote mismatch' => ['quote_mismatch'];
+        yield 'credential used' => ['credential_already_used'];
+        yield 'before the facilitator' => ['unexpected_settle_error'];
+        yield 'reverted' => ['transaction_reverted'];
+        yield 'unlisted' => ['brand_new_reason'];
+        yield 'null' => [null];
     }
 
-    #[DataProvider('declineReasons')]
-    public function testReasonsKnownToPrecedeBroadcastAreDefiniteDeclines(string $reason): void
+    #[DataProvider('finalReasons')]
+    public function testEveryOtherFailureIsFinal(?string $reason): void
     {
-        $result = new SettleResult(false, '', '', null, $reason);
+        $result = new SettleResult(false, '0xabc', '', null, $reason);
 
-        self::assertTrue($result->isDefiniteDecline());
         self::assertFalse($result->isPending());
-        self::assertFalse($result->needsReview());
+        self::assertFalse($result->isAlreadySettled());
     }
 
-    public static function reviewReasons(): iterable
+    public function testAlreadySettledIsNotPending(): void
     {
-        yield 'consumed' => ['authorization_consumed'];
-        yield 'unresolved' => ['settlement_unresolved'];
-    }
+        $result = new SettleResult(false, '0xabc', 'eip155:97', null, 'checkout_already_settled');
 
-    #[DataProvider('reviewReasons')]
-    public function testConsumedAndUnresolvedNeedReviewOnly(string $reason): void
-    {
-        $result = new SettleResult(false, '', '', null, $reason);
-
-        self::assertTrue($result->needsReview());
+        self::assertTrue($result->isAlreadySettled());
         self::assertFalse($result->isPending());
-        self::assertFalse($result->isDefiniteDecline());
     }
 
-    public function testSuccessIsNoneOfThose(): void
+    public function testSuccessIsNeitherPendingNorAlreadySettled(): void
     {
         $result = new SettleResult(true, '0xabc', 'eip155:84532', null, null);
 
         self::assertFalse($result->isPending());
-        self::assertFalse($result->isDefiniteDecline());
-        self::assertFalse($result->needsReview());
+        self::assertFalse($result->isAlreadySettled());
     }
 }

@@ -9,6 +9,13 @@ Each Prism quote names its own checkout session as the resource: the store's `AP
 `/ucp/v1/checkout-sessions/{id}`. It no longer depends on the continue URL the store is configured with
 or on the domain a request arrives on. Prism binds a quote and its settlement to that URL.
 
+Settlement follows Prism's checkout binding. A checkout stays held only while Prism answers
+`settlement_pending` or `checkout_settlement_in_progress`, or does not answer. `checkout_already_settled`
+marks the order paid with the transaction Prism returns. Any other answer is final. A retry that does not
+settle keeps the checkout held, so `requires_escalation` is no longer used. A payment submitted while a
+checkout is held is sent to Prism but not stored. A transaction failed by a declined attempt is marked paid
+when a later attempt settles. A payment whose `resource.url` differs from the quoted one is refused.
+
 # 0.7.11
 
 The Prism payment card on the order page shows "Net received" and "Refund up to". The plugin asks Prism

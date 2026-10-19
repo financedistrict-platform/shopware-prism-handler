@@ -94,9 +94,15 @@ final readonly class PrismSettlementRecord
         return SettlementStatus::SETTLED === $this->status;
     }
 
-    public function holdsCredential(array $credential): bool
+    /**
+     * Prism binds the quote to `resource.url` and reads it from the credential at settle. It is not
+     * signed, so the credential must name exactly the resource we were quoted for.
+     */
+    public function namesOfferedResource(): bool
     {
-        return null !== $this->credential && self::canonical($this->credential) === self::canonical($credential);
+        $offered = $this->offeredEntry['config']['resource']['url'] ?? null;
+
+        return \is_string($offered) && $offered === ($this->credential['paymentPayload']['resource']['url'] ?? null);
     }
 
     public function isFailed(): bool
@@ -104,17 +110,18 @@ final readonly class PrismSettlementRecord
         return SettlementStatus::FAILED === $this->status;
     }
 
-    private static function canonical(mixed $value): mixed
+    /** @param array<string, mixed> $credential */
+    public function withCredential(array $credential): self
     {
-        if (!\is_array($value)) {
-            return $value;
-        }
-
-        $value = array_map(self::canonical(...), $value);
-        if (!array_is_list($value)) {
-            ksort($value);
-        }
-
-        return $value;
+        return new self(
+            $this->checkoutSessionId,
+            $credential,
+            $this->status,
+            $this->transactionHash,
+            $this->network,
+            $this->offeredEntry,
+            $this->quotedAmount,
+            $this->quotedCurrency,
+        );
     }
 }

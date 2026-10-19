@@ -39,6 +39,7 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
     private const SESSION = 'cs_1';
     private const ORDER = '0a1b2c3d4e5f60718293a4b5c6d7e8f9';
     private const TRANSACTION = 'tx-1';
+    private const RESOURCE = 'https://shop.example/ucp/v1/checkout-sessions/cs_1';
 
     private const ACCEPT = [
         'scheme' => 'exact',
@@ -55,6 +56,7 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
     private object $gateway;
     private int $paidCalls = 0;
     private int $failCalls = 0;
+    private string $transactionState = 'open';
 
     protected function setUp(): void
     {
@@ -86,7 +88,7 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
             'offer' => json_encode([
                 'quotedAmount' => '12.50',
                 'quotedCurrency' => 'USD',
-                'entry' => ['id' => HandlerId::PRISM, 'config' => ['accepts' => [self::ACCEPT]]],
+                'entry' => ['id' => HandlerId::PRISM, 'config' => ['resource' => ['url' => self::RESOURCE], 'accepts' => [self::ACCEPT]]],
             ]),
             'now' => '2026-09-30 00:00:00.000',
         ]);
@@ -125,9 +127,11 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
         $this->transactions = $this->createMock(OrderTransactionStateHandler::class);
         $this->transactions->method('paid')->willReturnCallback(function (): void {
             ++$this->paidCalls;
+            $this->transactionState = 'paid';
         });
         $this->transactions->method('fail')->willReturnCallback(function (): void {
             ++$this->failCalls;
+            $this->transactionState = 'failed';
         });
     }
 
@@ -226,21 +230,14 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
         }
     }
 
-    public static function unknownOutcomeReasons(): iterable
+    public static function pendingReasons(): iterable
     {
-        yield 'gateway catch-all' => ['unexpected_settle_error'];
-        yield 'receipt not seen' => ['receipt_timeout'];
         yield 'pending' => ['settlement_pending'];
-        yield 'execution failed' => ['execution_failed: connection reset'];
-        yield 'settlement failed' => ['settlement_failed'];
-        yield 'transaction reverted' => ['transaction_reverted'];
-        yield 'facilitator default' => ['facilitator_settlement_failed'];
-        yield 'unlisted reason' => ['some_reason_from_a_newer_gateway'];
-        yield 'no reason' => [null];
+        yield 'in progress' => ['checkout_settlement_in_progress'];
     }
 
-    #[DataProvider('unknownOutcomeReasons')]
-    public function testUnknownOutcomeReasonsHoldTheOrderAndNeverFreeTheBuyerToResign(?string $reason): void
+    #[DataProvider('pendingReasons')]
+    public function testStillRunningAnswersHoldTheOrder(string $reason): void
     {
         $this->gateway->script = [new SettleResult(false, '', '', null, $reason)];
 
@@ -252,44 +249,26 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
         self::assertSame(0, $this->paidCalls);
     }
 
-    public static function preBroadcastReasons(): iterable
+    public static function finalReasons(): iterable
     {
-        foreach ([
-            'unsupported_network',
-            'unsupported_token',
-            'point_of_service_not_found',
-            'seller_wallet_not_configured',
-            'sanctions_hit',
-            'risk_threshold_exceeded',
-            'affiliate_residual_overflow',
-            'affiliate_settlement_unavailable',
-            'cashback_outside_campaign_bounds',
-            'invalid_payment_accepted_mismatch',
-            'invalid_signature',
-            'insufficient_funds',
-            'balance_check_failed',
-            'balance_verification_failed',
-            'invalid_exact_evm_payload_authorization_expired',
-            'invalid_exact_evm_payload_authorization_not_yet_valid',
-            'invalid_exact_evm_payload_authorization_signature',
-            'invalid_exact_evm_payload_recipient_mismatch',
-            'invalid_authorization_recipient',
-            'validation_failed: InvalidMint',
-            'unknown_token: 0xabc on chain 84532',
-            'authorization_mismatch',
-        ] as $reason) {
-            yield $reason => [$reason];
-        }
+        yield 'insufficient funds' => ['insufficient_funds'];
+        yield 'quote not found' => ['quote_not_found'];
+        yield 'quote mismatch' => ['quote_mismatch'];
+        yield 'credential used elsewhere' => ['credential_already_used'];
+        yield 'before the facilitator' => ['unexpected_settle_error'];
+        yield 'reverted' => ['transaction_reverted'];
+        yield 'unlisted reason' => ['some_reason_from_a_newer_gateway'];
+        yield 'no reason' => [null];
     }
 
-    #[DataProvider('preBroadcastReasons')]
-    public function testReasonsKnownToHappenBeforeBroadcastStillDeclineTheOrder(string $reason): void
+    #[DataProvider('finalReasons')]
+    public function testEveryOtherAnswerDeclinesTheOrder(?string $reason): void
     {
         $this->gateway->script = [new SettleResult(false, '', '', null, $reason)];
 
         try {
             $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
-            self::fail('A decline known to precede broadcast must fail the checkout.');
+            self::fail('A final answer from Prism must fail the checkout.');
         } catch (ValidationException) {
             self::assertSame(SettlementStatus::FAILED, $this->rowStatus());
             self::assertSame(1, $this->failCalls);
@@ -298,16 +277,16 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
 
     public static function resumedFailures(): iterable
     {
-        yield 'used nonce' => [new SettleResult(false, '', '', null, 'execution_failed: Transaction would revert: authorization is used or canceled')];
         yield 'decline reason' => [new SettleResult(false, '', '', null, 'insufficient_funds')];
-        yield 'catch-all' => [new SettleResult(false, '', '', null, 'unexpected_settle_error')];
+        yield 'quote mismatch' => [new SettleResult(false, '', '', null, 'quote_mismatch')];
         yield 'pending again' => [new SettleResult(false, '', '', null, 'settlement_pending')];
-        yield 'consumed' => [new SettleResult(false, '', '', null, 'authorization_consumed')];
+        yield 'in progress' => [new SettleResult(false, '', '', null, 'checkout_settlement_in_progress')];
         yield 'client error' => [new PrismApiException('Prism POST /api/v2/payment/settle failed: HTTP 400', 400)];
     }
 
+    /** A retry that fails says nothing about the earlier attempt, so the order stays held. */
     #[DataProvider('resumedFailures')]
-    public function testResumedRetryThatIsNotSuccessIsHeldForReviewNeverFailed(SettleResult|\Throwable $second): void
+    public function testResumedRetryThatIsNotSettledKeepsTheOrderHeld(SettleResult|\Throwable $second): void
     {
         $this->gateway->script = [new PrismApiException('timeout'), $second];
         $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
@@ -315,15 +294,11 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
 
         $held = $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
 
-        self::assertSame(CheckoutStatus::RequiresEscalation, $held->status);
-        self::assertSame(SettlementStatus::UNRESOLVED, $this->rowStatus());
+        self::assertSame(CheckoutStatus::CompleteInProgress, $held->status);
+        self::assertSame(SettlementStatus::SETTLING, $this->rowStatus());
+        self::assertSame(json_encode($this->credential()), $this->rowCredential());
         self::assertSame(0, $this->failCalls);
         self::assertSame(0, $this->paidCalls);
-        self::assertSame($this->gateway->settled[0], $this->gateway->settled[1]);
-
-        $this->expireClaim();
-        $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
-        self::assertCount(2, $this->gateway->settled);
     }
 
     public function testResumedRetryWithoutAnAnswerStaysHeldForTheSameCredential(): void
@@ -337,31 +312,6 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
         self::assertSame(CheckoutStatus::CompleteInProgress, $held->status);
         self::assertSame(SettlementStatus::SETTLING, $this->rowStatus());
         self::assertSame(0, $this->failCalls);
-    }
-
-    public static function reviewReasons(): iterable
-    {
-        yield 'authorization consumed' => ['authorization_consumed'];
-        yield 'settlement unresolved' => ['settlement_unresolved'];
-    }
-
-    #[DataProvider('reviewReasons')]
-    public function testReviewOutcomeLeavesTheOrderHeldAndIsNeverRetried(string $reason): void
-    {
-        $this->gateway->script = [new SettleResult(false, '', '', null, $reason)];
-
-        $held = $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
-
-        self::assertSame(CheckoutStatus::RequiresEscalation, $held->status);
-        self::assertSame(SettlementStatus::UNRESOLVED, $this->rowStatus());
-        self::assertSame(0, $this->failCalls);
-        self::assertSame(0, $this->paidCalls);
-
-        $this->expireClaim();
-        $again = $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
-
-        self::assertSame(CheckoutStatus::RequiresEscalation, $again->status);
-        self::assertCount(1, $this->gateway->settled);
     }
 
     public function testRetryWithTheSameCredentialInTheRequestResumesTheSettle(): void
@@ -380,25 +330,100 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
         self::assertSame(1, $this->paidCalls);
     }
 
-    public function testRetryWithADifferentCredentialIsRefusedWhileSettling(): void
+    /**
+     * The first settle landed but its answer was lost. A new authorization is forwarded to learn
+     * that, Prism refuses it as already settled, and the order is paid by the first one's tx. The
+     * new authorization is never stored.
+     */
+    public function testNewAuthorizationOnAHeldCheckoutPaysTheOrderWhenPrismReportsItSettled(): void
     {
-        $this->gateway->script = [new PrismApiException('timeout')];
+        $this->gateway->script = [new PrismApiException('timeout'), $this->alreadySettled('0xfirst')];
         $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
         $this->expireClaim();
 
-        $other = $this->credential();
-        $other['paymentPayload']['payload']['signature'] = '0xother';
+        $done = $this->adapter()->completeCheckoutFromRequest(
+            new CheckoutCompleteRequest(self::SESSION, [$this->instrument($this->otherCredential())]),
+            new RequestContext(),
+        );
 
-        $this->expectException(ValidationException::class);
+        self::assertSame(CheckoutStatus::Completed, $done->status);
+        self::assertSame($this->otherCredential(), $this->gateway->settled[1]);
+        self::assertSame(['settled', '0xfirst', null], $this->row());
+        self::assertSame(1, $this->paidCalls);
+    }
+
+    public function testNewAuthorizationOnAHeldCheckoutIsNotStoredWhenPrismRefusesIt(): void
+    {
+        $this->gateway->script = [new PrismApiException('timeout'), new SettleResult(false, '', '', null, 'credential_already_used')];
+        $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+        $this->expireClaim();
+
+        $held = $this->adapter()->completeCheckoutFromRequest(
+            new CheckoutCompleteRequest(self::SESSION, [$this->instrument($this->otherCredential())]),
+            new RequestContext(),
+        );
+
+        self::assertSame(CheckoutStatus::CompleteInProgress, $held->status);
+        self::assertSame(['settling', null, json_encode($this->credential())], $this->row());
+        self::assertSame(0, $this->failCalls);
+    }
+
+    /** Prism released the first attempt (nothing moved), so the new authorization settles and is kept. */
+    public function testNewAuthorizationOnAHeldCheckoutIsKeptWhenItIsTheOneThatSettles(): void
+    {
+        $this->gateway->script = [new PrismApiException('timeout'), $this->settled()];
+        $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+        $this->expireClaim();
+
+        $this->adapter()->completeCheckoutFromRequest(
+            new CheckoutCompleteRequest(self::SESSION, [$this->instrument($this->otherCredential())]),
+            new RequestContext(),
+        );
+
+        self::assertSame(['settled', '0xabc', json_encode($this->otherCredential())], $this->row());
+    }
+
+    /**
+     * Declined, then paid with a new authorization: Prism reports the first one landed after all.
+     * The transaction the decline failed is paid, and the unused authorization is dropped.
+     */
+    public function testAlreadySettledAfterADeclinePaysTheFailedTransaction(): void
+    {
+        $this->gateway->script = [new SettleResult(false, '', '', null, 'insufficient_funds'), $this->alreadySettled('0xfirst')];
+
+        try {
+            $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+        } catch (ValidationException) {
+        }
+        self::assertSame('failed', $this->transactionState);
+
+        // The new authorization as capture() stores it (its upsert is MySQL-only, so seeded here).
+        $this->pdo->prepare("UPDATE fd_prism_payment_settlement SET status = 'pending', credential = :c")
+            ->execute(['c' => json_encode($this->otherCredential())]);
+
+        $done = $this->adapter()->completeCheckout(self::SESSION, new RequestContext());
+
+        self::assertSame(CheckoutStatus::Completed, $done->status);
+        self::assertSame(['settled', '0xfirst', null], $this->row());
+        self::assertSame('paid', $this->transactionState);
+    }
+
+    /** I5: `resource.url` is not signed, so a credential pointing at another checkout is refused. */
+    public function testCredentialNamingAnotherResourceIsRefusedBeforeTheOrder(): void
+    {
+        $this->inner->expects(self::never())->method('completeCheckout');
+
+        $credential = $this->credential();
+        $credential['paymentPayload']['resource']['url'] = 'https://shop.example/ucp/v1/checkout-sessions/cs_2';
 
         try {
             $this->adapter()->completeCheckoutFromRequest(
-                new CheckoutCompleteRequest(self::SESSION, [$this->instrument($other)]),
+                new CheckoutCompleteRequest(self::SESSION, [$this->instrument($credential)]),
                 new RequestContext(),
             );
-        } finally {
-            self::assertCount(1, $this->gateway->settled);
-            self::assertSame(SettlementStatus::SETTLING, $this->rowStatus());
+            self::fail('A credential for another resource must be refused.');
+        } catch (ValidationException) {
+            self::assertSame([], $this->gateway->settled);
         }
     }
 
@@ -436,7 +461,9 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
         $domains->method('resolveByBaseUri')->willReturn(new SalesChannelResolution('sc-1'));
 
         $connection = $this->createMock(\Doctrine\DBAL\Connection::class);
-        $connection->method('fetchAssociative')->willReturn(['id' => self::TRANSACTION, 'state' => 'open']);
+        $connection->method('fetchAssociative')->willReturnCallback(
+            fn (): array => ['id' => self::TRANSACTION, 'state' => $this->transactionState],
+        );
 
         return new PrismCheckoutAdapter(
             $this->inner,
@@ -459,6 +486,19 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
         )->fetchColumn();
     }
 
+    /** @return array{string, ?string, ?string} status, transaction hash, credential */
+    private function row(): array
+    {
+        return $this->pdo->query(
+            "SELECT status, transaction_hash, credential FROM fd_prism_payment_settlement WHERE checkout_session_id = '" . self::SESSION . "'",
+        )->fetch(\PDO::FETCH_NUM);
+    }
+
+    private function rowCredential(): ?string
+    {
+        return $this->row()[2];
+    }
+
     private function expireClaim(): void
     {
         $this->pdo->exec("UPDATE fd_prism_payment_settlement SET updated_at = '2026-09-30 00:00:00.000'");
@@ -468,9 +508,22 @@ final class PrismCheckoutAdapterSettleRecoveryTest extends TestCase
     {
         return [
             'x402Version' => 2,
-            'paymentPayload' => ['payload' => ['signature' => '0xsig']],
+            'paymentPayload' => ['resource' => ['url' => self::RESOURCE], 'payload' => ['signature' => '0xsig']],
             'paymentRequirements' => self::ACCEPT,
         ];
+    }
+
+    private function otherCredential(): array
+    {
+        $credential = $this->credential();
+        $credential['paymentPayload']['payload']['signature'] = '0xother';
+
+        return $credential;
+    }
+
+    private function alreadySettled(string $transaction): SettleResult
+    {
+        return new SettleResult(false, $transaction, 'eip155:84532', null, 'checkout_already_settled');
     }
 
     private function instrument(array $credential): PaymentInstrument

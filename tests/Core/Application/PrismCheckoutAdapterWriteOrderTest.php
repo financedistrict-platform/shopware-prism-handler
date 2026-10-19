@@ -148,9 +148,8 @@ final class PrismCheckoutAdapterWriteOrderTest extends CheckoutAdapterTestCase
             $calls[] = 'capture';
         });
         $this->store->method('claim')->willReturn(SettleClaim::Fresh);
-        // loaded by the state guard, then by complete(), then re-read after the settle lands
+        // loaded by complete(), then re-read after the settle lands
         $this->store->method('load')->willReturnOnConsecutiveCalls(
-            $this->record(SettlementStatus::PENDING, null),
             $this->record(SettlementStatus::PENDING, null),
             $this->record(SettlementStatus::SETTLED, $this->credential(), '0xabc'),
         );
@@ -165,18 +164,13 @@ final class PrismCheckoutAdapterWriteOrderTest extends CheckoutAdapterTestCase
     }
 
     /**
-     * The store refuses to overwrite a row that is mid-settle, so the in-memory view must refuse
-     * too. Only a race reaches this: the state guard reads the row before a concurrent complete
-     * claims it, and `complete()` reads it after. Folding the credential in anyway would present a
-     * `settling` row as `pending` — the double-settle shape the claim exists to prevent.
+     * A row that is mid-settle is never overwritten: a credential arriving on it is not stored, and
+     * while the settle is still live nothing is sent either. Presenting a `settling` row as
+     * `pending` is the double-settle shape the claim exists to prevent.
      */
-    public function testCredentialIsNotFoldedIntoARowThatWentToSettlingMeanwhile(): void
+    public function testCredentialIsNotFoldedIntoARowThatIsSettling(): void
     {
-        $this->store->method('load')->willReturnOnConsecutiveCalls(
-            $this->record(SettlementStatus::PENDING, null),            // the state guard
-            $this->record(SettlementStatus::SETTLING, $this->credential()), // claimed in between
-            $this->record(SettlementStatus::SETTLING, $this->credential()),
-        );
+        $this->store->method('load')->willReturn($this->record(SettlementStatus::SETTLING, $this->credential()));
         $this->inner->method('completeCheckout')->willReturn($this->completed(12.50));
         $this->store->method('claim')->willReturn(SettleClaim::None);
 
