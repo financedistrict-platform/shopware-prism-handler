@@ -164,16 +164,19 @@ final class DbalCredentialStoreTest extends TestCase
         );
     }
 
-    /** The two legal predecessors of `failed`: rejected before the claim, and rejected on-chain. */
+    /**
+     * The two legal predecessors of `failed`: rejected before the claim, and rejected on-chain. The
+     * credential goes with it — nothing settles a failed row again.
+     */
     #[DataProvider('failableStatuses')]
-    public function testMarkFailedFailsARowThatHasNotSettled(string $status): void
+    public function testMarkFailedFailsARowThatHasNotSettledAndDropsItsCredential(string $status): void
     {
         $this->seed($status);
 
         $this->store->markFailed(self::SESSION_ID);
 
         self::assertSame(
-            ['status' => SettlementStatus::FAILED, 'credential' => self::CREDENTIAL],
+            ['status' => SettlementStatus::FAILED, 'credential' => null],
             $this->row(),
         );
     }
