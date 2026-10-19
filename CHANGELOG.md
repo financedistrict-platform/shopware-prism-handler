@@ -1,3 +1,9 @@
+# 0.7.12
+
+A settlement that fails no longer keeps the buyer's signed authorization. The plugin clears the stored
+credential when it marks the settlement failed, as it already does when the cart changes or the buyer
+picks another payment method. A failed checkout still needs a new payment before it can complete.
+
 # 0.7.11
 
 The Prism payment card on the order page shows "Net received" and "Refund up to". The plugin asks Prism
