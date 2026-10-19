@@ -8,9 +8,9 @@ namespace Fd\PrismPayment\Core\Payment;
  * Parsed Prism `POST /api/v2/payment/settle` response (SettleResponse).
  * `transaction` is the on-chain tx hash; `network` is the CAIP-2 chain id.
  *
- * Prism binds each settle to its checkout, so its answer is final unless it says otherwise: only
- * the two "still running" reasons mean wait, and `checkout_already_settled` means the checkout was
- * paid by another authorization, whose transaction it returns.
+ * Prism binds each settle to its checkout, so its answer is final unless it says otherwise. The two
+ * "still running" reasons mean wait. `checkout_already_settled` means another authorization paid the
+ * checkout; it carries that transaction, and without one it cannot be recorded yet, so it waits too.
  *
  * @internal
  */
@@ -32,7 +32,6 @@ final readonly class SettleResult
     ) {
     }
 
-    /** An "already settled" answer without its transaction cannot be recorded yet, so it waits too. */
     public function isPending(): bool
     {
         return !$this->success

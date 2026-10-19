@@ -77,6 +77,11 @@ abstract class CheckoutAdapterTestCase extends TestCase
 
     protected function adapter(): PrismCheckoutAdapter
     {
+        return $this->adapterOver($this->store, $this->gateway);
+    }
+
+    protected function adapterOver(CredentialStore $store, PrismGateway $gateway): PrismCheckoutAdapter
+    {
         $config = $this->createMock(ConfigResolver::class);
         $config->method('resolve')->willReturn(new PrismConfig('https://prism.test', 'key'));
 
@@ -85,8 +90,8 @@ abstract class CheckoutAdapterTestCase extends TestCase
 
         return new PrismCheckoutAdapter(
             $this->inner,
-            $this->store,
-            $this->gateway,
+            $store,
+            $gateway,
             $config,
             new RequestSalesChannelResolver($domains),
             $this->transactions,

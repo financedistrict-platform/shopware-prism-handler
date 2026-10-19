@@ -5,19 +5,13 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\Tests\Core\Application;
 
 use Doctrine\DBAL\Connection;
-use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
 use Fd\PrismPayment\Application\Ucp\PrismCheckoutAdapter;
-use Fd\PrismPayment\Core\Payment\AcceptsMatcher;
 use Fd\PrismPayment\Core\Payment\PrismConfig;
 use Fd\PrismPayment\Core\Payment\SettleResult;
-use Fd\PrismPayment\Core\Port\ConfigResolver;
 use Fd\PrismPayment\Core\Port\PrismGateway;
-use Fd\PrismPayment\Core\Settlement\SettlementStateMachine;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Fd\PrismPayment\Core\Ucp\HandlerId;
 use Fd\PrismPayment\Infrastructure\Persistence\DbalCredentialStore;
-use Swag\AgenticCommerce\Ucp\SalesChannel\SalesChannelDomainResolver;
-use Swag\AgenticCommerce\Ucp\SalesChannel\SalesChannelResolution;
 use Ucp\Sdk\Model\Checkout\PaymentInstrument;
 
 /**
@@ -105,24 +99,7 @@ abstract class SettleRecoveryTestCase extends CheckoutAdapterTestCase
 
     protected function adapter(): PrismCheckoutAdapter
     {
-        $config = $this->createMock(ConfigResolver::class);
-        $config->method('resolve')->willReturn(new PrismConfig('https://prism.test', 'key'));
-
-        $domains = $this->createMock(SalesChannelDomainResolver::class);
-        $domains->method('resolveByBaseUri')->willReturn(new SalesChannelResolution('sc-1'));
-
-        return new PrismCheckoutAdapter(
-            $this->inner,
-            new DbalCredentialStore(new Connection($this->pdo)),
-            $this->prism,
-            $config,
-            new RequestSalesChannelResolver($domains),
-            $this->transactions,
-            $this->transactionRepository,
-            $this->connection,
-            new SettlementStateMachine(),
-            new AcceptsMatcher(),
-        );
+        return $this->adapterOver(new DbalCredentialStore(new Connection($this->pdo)), $this->prism);
     }
 
     /** @return array{string, ?string, ?string} status, transaction hash, credential */
