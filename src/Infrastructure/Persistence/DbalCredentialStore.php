@@ -75,13 +75,12 @@ final class DbalCredentialStore implements CredentialStore
                  offered_accepts = NULL,
                  credential = NULL,
                  updated_at = :now
-             WHERE checkout_session_id = :id AND status NOT IN (:settled, :settling, :unresolved)',
+             WHERE checkout_session_id = :id AND status NOT IN (:settled, :settling)',
             [
                 'id' => $sessionId,
                 'failed' => SettlementStatus::FAILED,
                 'settled' => SettlementStatus::SETTLED,
                 'settling' => SettlementStatus::SETTLING,
-                'unresolved' => SettlementStatus::UNRESOLVED,
                 'now' => $this->now(),
             ],
         );
@@ -92,13 +91,12 @@ final class DbalCredentialStore implements CredentialStore
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
              SET status = :pending, credential = NULL, updated_at = :now
-             WHERE checkout_session_id = :id AND status NOT IN (:settled, :settling, :unresolved)',
+             WHERE checkout_session_id = :id AND status NOT IN (:settled, :settling)',
             [
                 'id' => $sessionId,
                 'pending' => SettlementStatus::PENDING,
                 'settled' => SettlementStatus::SETTLED,
                 'settling' => SettlementStatus::SETTLING,
-                'unresolved' => SettlementStatus::UNRESOLVED,
                 'now' => $this->now(),
             ],
         );
@@ -121,18 +119,17 @@ final class DbalCredentialStore implements CredentialStore
                 (checkout_session_id, credential, status, transaction_hash, network, created_at)
              VALUES (:id, :cred, :pending, NULL, NULL, :now)
              ON DUPLICATE KEY UPDATE
-                credential       = IF(status IN (:settled, :settling, :unresolved), credential, :cred),
-                transaction_hash = IF(status IN (:settled, :settling, :unresolved), transaction_hash, NULL),
-                network          = IF(status IN (:settled, :settling, :unresolved), network, NULL),
-                updated_at       = IF(status IN (:settled, :settling, :unresolved), updated_at, :now),
-                status           = IF(status IN (:settled, :settling, :unresolved), status, :pending)',
+                credential       = IF(status IN (:settled, :settling), credential, :cred),
+                transaction_hash = IF(status IN (:settled, :settling), transaction_hash, NULL),
+                network          = IF(status IN (:settled, :settling), network, NULL),
+                updated_at       = IF(status IN (:settled, :settling), updated_at, :now),
+                status           = IF(status IN (:settled, :settling), status, :pending)',
             [
                 'id' => $sessionId,
                 'cred' => $this->encode($credential),
                 'pending' => SettlementStatus::PENDING,
                 'settled' => SettlementStatus::SETTLED,
                 'settling' => SettlementStatus::SETTLING,
-                'unresolved' => SettlementStatus::UNRESOLVED,
                 'now' => $this->now(),
             ],
         );
@@ -209,14 +206,14 @@ final class DbalCredentialStore implements CredentialStore
         );
     }
 
-    public function markSettled(string $sessionId, string $transactionHash, string $network): void
+    public function markSettled(string $sessionId, string $transactionHash, string $network, ?array $credential): void
     {
         // Runs only after a won claim() (status = settling), completing settling -> settled. The
         // `status = :settling` guard makes that explicit in SQL: the row can only reach `settled`
         // from `settling`, so nothing can be forced terminal out of another state.
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
-             SET status = :status, transaction_hash = :tx, network = :net, updated_at = :now
+             SET status = :status, transaction_hash = :tx, network = :net, credential = :cred, updated_at = :now
              WHERE checkout_session_id = :id AND status = :settling',
             [
                 'id' => $sessionId,
@@ -224,21 +221,7 @@ final class DbalCredentialStore implements CredentialStore
                 'settling' => SettlementStatus::SETTLING,
                 'tx' => $transactionHash,
                 'net' => $network,
-                'now' => $this->now(),
-            ],
-        );
-    }
-
-    public function markUnresolved(string $sessionId): void
-    {
-        $this->connection->executeStatement(
-            'UPDATE fd_prism_payment_settlement
-             SET status = :status, updated_at = :now
-             WHERE checkout_session_id = :id AND status = :settling',
-            [
-                'id' => $sessionId,
-                'status' => SettlementStatus::UNRESOLVED,
-                'settling' => SettlementStatus::SETTLING,
+                'cred' => null !== $credential ? $this->encode($credential) : null,
                 'now' => $this->now(),
             ],
         );

@@ -61,7 +61,6 @@ final class DbalCredentialStoreTest extends TestCase
     {
         yield 'settled' => [SettlementStatus::SETTLED];
         yield 'settling' => [SettlementStatus::SETTLING];
-        yield 'unresolved' => [SettlementStatus::UNRESOLVED];
     }
 
     #[DataProvider('releasableStatuses')]
@@ -92,7 +91,7 @@ final class DbalCredentialStoreTest extends TestCase
         self::assertSame(SettleClaim::Fresh, $this->store->claim(self::SESSION_ID));
 
         $this->store->releaseToBase(self::SESSION_ID);
-        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base');
+        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base', ['type' => 'x402']);
 
         self::assertSame(SettleClaim::None, $this->store->claim(self::SESSION_ID));
         self::assertSame(
@@ -234,27 +233,37 @@ final class DbalCredentialStoreTest extends TestCase
     {
         yield 'settled' => [SettlementStatus::SETTLED];
         yield 'failed' => [SettlementStatus::FAILED];
-        yield 'unresolved' => [SettlementStatus::UNRESOLVED];
     }
 
-    public function testMarkUnresolvedMovesASettlingRow(): void
+    /** The row keeps the authorization Prism settled, which may not be the one it held. */
+    public function testMarkSettledKeepsTheAuthorizationThatSettled(): void
     {
         $this->seed(SettlementStatus::SETTLING);
 
-        $this->store->markUnresolved(self::SESSION_ID);
+        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base', ['type' => 'x402', 'nonce' => '0x2']);
 
         self::assertSame(
-            ['status' => SettlementStatus::UNRESOLVED, 'credential' => self::CREDENTIAL],
+            ['status' => SettlementStatus::SETTLED, 'credential' => '{"type":"x402","nonce":"0x2"}'],
             $this->row(),
         );
     }
 
+    /** Another authorization paid the checkout: the one held was never spent and is not kept. */
+    public function testMarkSettledWithoutAnAuthorizationDropsTheOneHeld(): void
+    {
+        $this->seed(SettlementStatus::SETTLING);
+
+        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base', null);
+
+        self::assertSame(['status' => SettlementStatus::SETTLED, 'credential' => null], $this->row());
+    }
+
     #[DataProvider('nonSettlingStatuses')]
-    public function testMarkUnresolvedOnlyActsOnASettlingRow(string $status): void
+    public function testMarkSettledOnlyActsOnASettlingRow(string $status): void
     {
         $this->seed($status);
 
-        $this->store->markUnresolved(self::SESSION_ID);
+        $this->store->markSettled(self::SESSION_ID, '0xabc', 'base', null);
 
         self::assertSame(
             ['status' => $status, 'credential' => self::CREDENTIAL],
@@ -270,18 +279,6 @@ final class DbalCredentialStoreTest extends TestCase
         yield 'pending' => [SettlementStatus::PENDING];
         yield 'failed' => [SettlementStatus::FAILED];
         yield 'settled' => [SettlementStatus::SETTLED];
-    }
-
-    public function testMarkFailedLeavesAnUnresolvedRowUntouched(): void
-    {
-        $this->seed(SettlementStatus::UNRESOLVED);
-
-        $this->store->markFailed(self::SESSION_ID);
-
-        self::assertSame(
-            ['status' => SettlementStatus::UNRESOLVED, 'credential' => self::CREDENTIAL],
-            $this->row(),
-        );
     }
 
     /**

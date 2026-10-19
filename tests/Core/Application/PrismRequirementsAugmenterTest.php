@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\Tests\Core\Application;
 
 use Fd\PrismPayment\Application\SalesChannel\RequestSalesChannelResolver;
+use Fd\PrismPayment\Application\Ucp\CheckoutSessionUrl;
 use Fd\PrismPayment\Application\Ucp\HandlerDeclarationProvider;
 use Fd\PrismPayment\Application\Ucp\PrismRequirementsAugmenter;
 use Fd\PrismPayment\Application\Ucp\UcpVersionResolver;
@@ -133,6 +134,24 @@ final class PrismRequirementsAugmenterTest extends TestCase
         );
     }
 
+    /**
+     * The quoted resource names the checkout under the store's own url: not the continue url, which
+     * may be the same for every checkout, and not the domain the request happened to arrive on.
+     */
+    public function testQuoteResourceIsTheCheckoutSessionUnderTheStoreUrl(): void
+    {
+        $this->store->method('load')->willReturn(null);
+        $this->client->expects(self::once())
+            ->method('paymentRequirements')
+            ->with(self::anything(), '149.00', 'USD', 'https://shop.example/ucp/v1/checkout-sessions/' . self::SESSION, self::anything())
+            ->willReturn(['accepts' => []]);
+
+        $this->augmenter()->augment(
+            $this->checkout(149.00, continueUrl: 'https://shop.example/checkout'),
+            new RequestContext(new RuntimeConfiguration('2026-08-25', 'https://shop.example.de'), 'shop.example.de'),
+        );
+    }
+
     private function augmenter(): PrismRequirementsAugmenter
     {
         $config = $this->createMock(ConfigResolver::class);
@@ -164,6 +183,7 @@ final class PrismRequirementsAugmenterTest extends TestCase
             $this->store,
             $this->createMock(LoggerInterface::class),
             $declarations,
+            new CheckoutSessionUrl('https://shop.example'),
         );
     }
 
@@ -182,15 +202,18 @@ final class PrismRequirementsAugmenterTest extends TestCase
         );
     }
 
-    private function checkout(float $total, CheckoutStatus $status = CheckoutStatus::ReadyForComplete): Checkout
-    {
+    private function checkout(
+        float $total,
+        CheckoutStatus $status = CheckoutStatus::ReadyForComplete,
+        ?string $continueUrl = 'https://store.test/ucp/v1/checkout-sessions/' . self::SESSION,
+    ): Checkout {
         return new Checkout(
             id: self::SESSION,
             status: $status,
             currency: 'USD',
             lineItems: [],
             totals: [new Money('total', $total, null, 'USD')],
-            continueUrl: 'https://store.test/ucp/v1/checkout-sessions/' . self::SESSION,
+            continueUrl: $continueUrl,
         );
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\DependencyInjection;
 
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
+use Fd\PrismPayment\Application\Ucp\CheckoutSessionUrl;
 use Fd\PrismPayment\Application\Ucp\HandlerDeclarationProvider;
 use Fd\PrismPayment\Application\Ucp\PrismCheckoutAdapter;
 use Fd\PrismPayment\Application\Ucp\UcpVersionResolver;
@@ -54,6 +55,9 @@ return static function (ContainerConfigurator $container): void {
     $services->set('fd_prism.cache')
         ->parent('cache.app')
         ->tag('cache.pool');
+
+    $services->set(CheckoutSessionUrl::class)
+        ->arg('$appUrl', '%env(APP_URL)%');
 
     $services->set(UcpVersionResolver::class)
         ->arg('$runtimeConfiguration', service(RuntimeConfiguration::class)->nullOnInvalid());

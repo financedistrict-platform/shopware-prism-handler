@@ -25,10 +25,9 @@ final class SettlementStateMachine
     /** @var array<string, list<string>> from-status => allowed to-statuses */
     private const ALLOWED = [
         SettlementStatus::PENDING => [SettlementStatus::SETTLING, SettlementStatus::FAILED],
-        SettlementStatus::SETTLING => [SettlementStatus::SETTLED, SettlementStatus::FAILED, SettlementStatus::UNRESOLVED],
+        SettlementStatus::SETTLING => [SettlementStatus::SETTLED, SettlementStatus::FAILED],
         SettlementStatus::FAILED => [SettlementStatus::PENDING],
         SettlementStatus::SETTLED => [],
-        SettlementStatus::UNRESOLVED => [],
     ];
 
     public function canTransition(string $from, string $to): bool
@@ -56,11 +55,6 @@ final class SettlementStateMachine
     public function mayRelease(string $status): bool
     {
         return SettlementStatus::PENDING === $status || SettlementStatus::FAILED === $status;
-    }
-
-    public function mayResume(string $status): bool
-    {
-        return SettlementStatus::SETTLING === $status || SettlementStatus::UNRESOLVED === $status;
     }
 
     /**
