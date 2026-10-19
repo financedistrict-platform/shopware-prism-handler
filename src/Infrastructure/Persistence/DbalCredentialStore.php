@@ -248,8 +248,7 @@ final class DbalCredentialStore implements CredentialStore
     {
         // `failed` has exactly two legal predecessors — pending (rejected before it was claimed) and
         // settling (rejected on-chain). The guard spells that out in SQL the way markSettled() does,
-        // so a settled row cannot be reverted by a caller that forgot to check first (F0). A failed
-        // row is never settled again, so its authorization is not kept.
+        // so a settled row cannot be reverted by a caller that forgot to check first (F0).
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
              SET status = :status, credential = NULL, updated_at = :now
