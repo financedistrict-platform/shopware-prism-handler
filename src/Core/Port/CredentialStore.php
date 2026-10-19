@@ -25,8 +25,8 @@ interface CredentialStore
     public function recordOffer(string $sessionId, string $quotedAmount, string $quotedCurrency, array $offeredEntry): void;
 
     /**
-     * Invalidate the captured Prism credential because the cart amount changed after it was signed
-     * (or a settle failed): clear the credential and move the row to `failed` so complete REFUSES
+     * Invalidate the captured Prism credential because the cart amount changed after it was signed:
+     * clear the credential and move the row to `failed` so complete REFUSES
      * (the agent must re-sign for the new amount). No-op on a settled row (F0).
      */
     public function invalidateOffer(string $sessionId): void;
@@ -60,6 +60,10 @@ interface CredentialStore
 
     public function markSettled(string $sessionId, string $transactionHash, string $network): void;
 
+    /**
+     * Move a pending or settling row to `failed` and clear its credential: a failed row is never
+     * settled again, and the agent must submit a new payment. No-op in any other status (F0).
+     */
     public function markFailed(string $sessionId): void;
 
     public function markUnresolved(string $sessionId): void;

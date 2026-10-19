@@ -13,6 +13,7 @@
         </testsuite>
         <testsuite name="Persistence">
             <directory>tests/Infrastructure</directory>
+            <directory>tests/Migration</directory>
         </testsuite>
     </testsuites>
     <source>
