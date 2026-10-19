@@ -29,6 +29,7 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
         private CredentialStore $credentialStore,
         private LoggerInterface $logger,
         private HandlerDeclarationProvider $declarations,
+        private CheckoutSessionUrl $sessionUrl,
     ) {
     }
 
@@ -60,9 +61,7 @@ final readonly class PrismRequirementsAugmenter implements CheckoutResponseAugme
                 $this->credentialStore->invalidateOffer($checkout->id);
             }
 
-            // Prism keys the quote by this url, so it must name this checkout alone. The continue url
-            // comes from a merchant template that need not contain the checkout id.
-            $resourceUrl = CheckoutSessionUrl::for($context, $checkout->id);
+            $resourceUrl = $this->sessionUrl->for($checkout->id);
 
             $prismConfig = $this->configResolver->resolve($this->salesChannelResolver->resolve($context));
             $declaration = $this->declaration($context);

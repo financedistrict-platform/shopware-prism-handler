@@ -5,8 +5,9 @@ credential when it marks the settlement failed, as it already does when the cart
 picks another payment method. Updating clears the credential on settlements that had already failed. A
 failed checkout still needs a new payment before it can complete.
 
-Each Prism quote names its own checkout session (`/ucp/v1/checkout-sessions/{id}`) as the resource,
-whatever continue URL the store is configured with. Prism binds a quote and its settlement to that URL.
+Each Prism quote names its own checkout session as the resource: the store's `APP_URL` followed by
+`/ucp/v1/checkout-sessions/{id}`. It no longer depends on the continue URL the store is configured with
+or on the domain a request arrives on. Prism binds a quote and its settlement to that URL.
 
 # 0.7.11
 
