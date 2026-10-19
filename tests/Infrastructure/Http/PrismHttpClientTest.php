@@ -55,6 +55,18 @@ final class PrismHttpClientTest extends TestCase
         self::assertSame('https://prism.example/api/v2/payment/settle', $http->requests[0]['url']);
     }
 
+    public function testSettlementSummaryGetsTheMerchantSettlementPath(): void
+    {
+        $http = new RecordingHttpClient([['status' => 'confirmed']]);
+
+        $this->client($http)->settlementSummary(new PrismConfig('https://prism.example', 'key'), '0xabc');
+
+        self::assertSame('GET', $http->requests[0]['method']);
+        self::assertSame('https://prism.example/api/v2/merchant/payments/0xabc/settlement', $http->requests[0]['url']);
+        self::assertSame(5.0, $http->requests[0]['options']['timeout']);
+        self::assertArrayNotHasKey('json', $http->requests[0]['options']);
+    }
+
     private function client(RecordingHttpClient $http): PrismHttpClient
     {
         return new PrismHttpClient($http, new PrismResponseParser());

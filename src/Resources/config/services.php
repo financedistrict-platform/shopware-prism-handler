@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\DependencyInjection;
 
 use Fd\PrismPayment\Application\Payment\PrismX402PaymentHandler;
+use Fd\PrismPayment\Application\Ucp\CheckoutSessionUrl;
 use Fd\PrismPayment\Application\Ucp\HandlerDeclarationProvider;
 use Fd\PrismPayment\Application\Ucp\PrismCheckoutAdapter;
 use Fd\PrismPayment\Application\Ucp\UcpVersionResolver;
@@ -13,6 +14,7 @@ use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Port\HandlerDeclarationSource;
 use Fd\PrismPayment\Core\Port\PrismGateway;
 use Fd\PrismPayment\Core\Port\SettlementReadModel;
+use Fd\PrismPayment\Core\Port\SettlementSummarySource;
 use Fd\PrismPayment\Infrastructure\Config\SystemConfigResolver;
 use Fd\PrismPayment\Infrastructure\Http\HttpHandlerDeclarationSource;
 use Fd\PrismPayment\Infrastructure\Http\PrismHttpClient;
@@ -41,6 +43,7 @@ return static function (ContainerConfigurator $container): void {
     // type-hint the abstraction (and be tested against in-memory fakes). The implementations
     // themselves are registered + autowired by the load() above.
     $services->alias(PrismGateway::class, PrismHttpClient::class);
+    $services->alias(SettlementSummarySource::class, PrismHttpClient::class);
     $services->alias(CredentialStore::class, DbalCredentialStore::class);
     $services->alias(SettlementReadModel::class, DbalSettlementReadModel::class);
     $services->alias(ConfigResolver::class, SystemConfigResolver::class);
@@ -52,6 +55,9 @@ return static function (ContainerConfigurator $container): void {
     $services->set('fd_prism.cache')
         ->parent('cache.app')
         ->tag('cache.pool');
+
+    $services->set(CheckoutSessionUrl::class)
+        ->arg('$appUrl', '%env(APP_URL)%');
 
     $services->set(UcpVersionResolver::class)
         ->arg('$runtimeConfiguration', service(RuntimeConfiguration::class)->nullOnInvalid());

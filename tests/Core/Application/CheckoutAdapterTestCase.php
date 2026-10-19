@@ -36,7 +36,7 @@ use Ucp\Sdk\Model\Common\Money;
 abstract class CheckoutAdapterTestCase extends TestCase
 {
     protected const SESSION = 'cs_1';
-    protected const ORDER = 'order-1';
+    protected const ORDER = '0a1b2c3d4e5f60718293a4b5c6d7e8f9';
     protected const TRANSACTION = 'tx-1';
     protected const QUOTE = '12.50';
 
@@ -48,7 +48,9 @@ abstract class CheckoutAdapterTestCase extends TestCase
         'payTo' => '0x40a01003f7543a3a3ee64ffb05504173bdb1c4fd',
     ];
 
-    protected const OFFER = ['id' => HandlerId::PRISM, 'config' => ['accepts' => [self::ACCEPT]]];
+    protected const RESOURCE = 'https://shop.example/ucp/v1/checkout-sessions/cs_1';
+
+    protected const OFFER = ['id' => HandlerId::PRISM, 'config' => ['resource' => ['url' => self::RESOURCE], 'accepts' => [self::ACCEPT]]];
 
     protected PaymentAwareCheckoutAdapterInterface&MockObject $inner;
     protected CredentialStore&MockObject $store;
@@ -75,6 +77,11 @@ abstract class CheckoutAdapterTestCase extends TestCase
 
     protected function adapter(): PrismCheckoutAdapter
     {
+        return $this->adapterOver($this->store, $this->gateway);
+    }
+
+    protected function adapterOver(CredentialStore $store, PrismGateway $gateway): PrismCheckoutAdapter
+    {
         $config = $this->createMock(ConfigResolver::class);
         $config->method('resolve')->willReturn(new PrismConfig('https://prism.test', 'key'));
 
@@ -83,8 +90,8 @@ abstract class CheckoutAdapterTestCase extends TestCase
 
         return new PrismCheckoutAdapter(
             $this->inner,
-            $this->store,
-            $this->gateway,
+            $store,
+            $gateway,
             $config,
             new RequestSalesChannelResolver($domains),
             $this->transactions,
@@ -119,7 +126,7 @@ abstract class CheckoutAdapterTestCase extends TestCase
     {
         return [
             'x402Version' => 2,
-            'paymentPayload' => ['payload' => ['signature' => '0xsig']],
+            'paymentPayload' => ['resource' => ['url' => self::RESOURCE], 'payload' => ['signature' => '0xsig']],
             'paymentRequirements' => $requirements,
         ];
     }

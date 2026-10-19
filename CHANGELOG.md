@@ -1,3 +1,46 @@
+# 0.7.12
+
+A settlement that fails no longer keeps the buyer's signed authorization. The plugin clears the stored
+credential when it marks the settlement failed, as it already does when the cart changes or the buyer
+picks another payment method. Updating clears the credential on settlements that had already failed. A
+failed checkout still needs a new payment before it can complete.
+
+Each Prism quote names its own checkout session as the resource: the store's `APP_URL` followed by
+`/ucp/v1/checkout-sessions/{id}`. It no longer depends on the continue URL the store is configured with
+or on the domain a request arrives on. Prism binds a quote and its settlement to that URL.
+
+Settlement follows Prism's checkout binding. A checkout stays held only while Prism answers
+`settlement_pending` or `checkout_settlement_in_progress`, or does not answer. `checkout_already_settled`
+marks the order paid with the transaction Prism returns. Any other answer is final. A retry that does not
+settle keeps the checkout held, so `requires_escalation` is no longer used. A payment submitted while a
+checkout is held is sent to Prism but not stored. A transaction failed by a declined attempt is marked paid
+when a later attempt settles. A payment whose `resource.url` differs from the quoted one is refused.
+
+# 0.7.11
+
+The Prism payment card on the order page shows "Net received" and "Refund up to". The plugin asks Prism
+for the payment's settlement split with the API key of the order's sales channel. The card shows the
+amount once the payment is confirmed, "Pending" while it is still on its way, and "Refund limit
+unavailable — check Prism portal" when Prism cannot answer. It never shows the gross amount as the limit.
+
+# 0.7.10
+
+A settle whose outcome is unknown no longer loses the buyer's payment. When the settle call times out,
+fails in transit, or Prism answers with any failure that is not known to happen before the transaction is
+sent (including `unexpected_settle_error`, `receipt_timeout` and `settlement_pending`), the checkout is held
+as `complete_in_progress` and the stored credential is kept. Only the same credential may retry, and only
+once the claim is older than 90 seconds. Prism's current answers need no change on its side: the plugin
+reads an unlisted reason as an unknown outcome.
+
+A failure counts as a definite decline only when it is an HTTP 4xx other than 408 and 429, or a reason
+that the gateway and facilitator return before anything is sent (for example `unsupported_network`,
+`sanctions_hit`, `insufficient_funds`, a bad signature or time bounds, or `authorization_mismatch`).
+Only then may the buyer sign a new payment.
+
+A retry that takes over an earlier attempt and does not succeed moves the checkout to `requires_escalation`
+and is left to the merchant, because the earlier attempt may already have landed. `authorization_consumed`
+and `settlement_unresolved` do the same on any attempt. A retry that gets no answer at all stays held.
+
 # 0.7.9
 
 The settlement record's terminal state is enforced in SQL on every write. Marking a settlement failed

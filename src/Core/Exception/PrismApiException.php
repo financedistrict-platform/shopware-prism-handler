@@ -13,4 +13,10 @@ namespace Fd\PrismPayment\Core\Exception;
  */
 final class PrismApiException extends \RuntimeException
 {
+    public function refusedBeforeSettling(): bool
+    {
+        $status = $this->getCode();
+
+        return $status >= 400 && $status < 500 && 408 !== $status && 429 !== $status;
+    }
 }

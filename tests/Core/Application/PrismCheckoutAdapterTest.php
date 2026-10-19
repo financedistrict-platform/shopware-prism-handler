@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fd\PrismPayment\Tests\Core\Application;
 
 use Fd\PrismPayment\Core\Payment\SettleResult;
+use Fd\PrismPayment\Core\Settlement\SettleClaim;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 use Ucp\Sdk\Adapter\PaymentAwareCheckoutAdapterInterface;
 use Ucp\Sdk\Exception\ValidationException;
@@ -94,7 +95,7 @@ final class PrismCheckoutAdapterTest extends CheckoutAdapterTestCase
         $this->transactionState = 'open';
         $this->settledRowAfterClaim();
         $this->inner->method('completeCheckout')->willReturn($this->completed(12.50));
-        $this->store->method('claim')->willReturn(true);
+        $this->store->method('claim')->willReturn(SettleClaim::Fresh);
 
         $this->transactions->expects(self::once())->method('process')->with(self::TRANSACTION);
         $this->gateway->expects(self::once())->method('settle')->willReturn($this->settleResult());
@@ -111,8 +112,8 @@ final class PrismCheckoutAdapterTest extends CheckoutAdapterTestCase
     {
         $this->store->method('load')->willReturn($this->record(SettlementStatus::PENDING, $this->credential(self::ACCEPT)));
         $this->inner->method('completeCheckout')->willReturn($this->completed(12.50));
-        $this->store->method('claim')->willReturn(true);
-        $this->gateway->method('settle')->willReturn(new SettleResult(false, '', '', null, 'declined'));
+        $this->store->method('claim')->willReturn(SettleClaim::Fresh);
+        $this->gateway->method('settle')->willReturn(new SettleResult(false, '', '', null, 'insufficient_funds'));
 
         $this->transactions->expects(self::once())->method('fail')->with(self::TRANSACTION);
         $this->transactions->expects(self::never())->method('paid');

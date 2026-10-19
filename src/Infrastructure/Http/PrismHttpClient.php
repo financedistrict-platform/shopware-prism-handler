@@ -9,10 +9,11 @@ use Fd\PrismPayment\Core\Payment\PrismConfig;
 use Fd\PrismPayment\Core\Payment\PrismResponseParser;
 use Fd\PrismPayment\Core\Payment\SettleResult;
 use Fd\PrismPayment\Core\Port\PrismGateway;
+use Fd\PrismPayment\Core\Port\SettlementSummarySource;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-final readonly class PrismHttpClient implements PrismGateway
+final readonly class PrismHttpClient implements PrismGateway, SettlementSummarySource
 {
     private const PAYMENT_REQUIREMENTS_PATH = '/api/v2/merchant/payment-requirements';
 
@@ -21,6 +22,10 @@ final readonly class PrismHttpClient implements PrismGateway
     private const QUOTE_TIMEOUT_SECONDS = 10.0;
 
     private const SETTLE_TIMEOUT_SECONDS = 60.0;
+
+    private const SETTLEMENT_SUMMARY_PATH = '/api/v2/merchant/payments/%s/settlement';
+
+    private const SETTLEMENT_SUMMARY_TIMEOUT_SECONDS = 5.0;
 
     public function __construct(
         private HttpClientInterface $httpClient,
@@ -54,6 +59,11 @@ final readonly class PrismHttpClient implements PrismGateway
         $data = $this->post($config, self::SETTLE_PATH, $credential, self::SETTLE_TIMEOUT_SECONDS);
 
         return $this->parser->settleResult($data);
+    }
+
+    public function settlementSummary(PrismConfig $config, string $transactionHash): array
+    {
+        return $this->send($config, 'GET', sprintf(self::SETTLEMENT_SUMMARY_PATH, rawurlencode($transactionHash)), null, self::SETTLEMENT_SUMMARY_TIMEOUT_SECONDS);
     }
 
     /**
@@ -91,7 +101,7 @@ final readonly class PrismHttpClient implements PrismGateway
         }
 
         if ($status < 200 || $status >= 300) {
-            throw new PrismApiException(sprintf('Prism %s %s failed: HTTP %d %s', $method, $path, $status, $raw));
+            throw new PrismApiException(sprintf('Prism %s %s failed: HTTP %d %s', $method, $path, $status, $raw), $status);
         }
 
         $decoded = json_decode($raw, true);

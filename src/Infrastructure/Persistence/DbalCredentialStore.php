@@ -7,6 +7,7 @@ namespace Fd\PrismPayment\Infrastructure\Persistence;
 use Doctrine\DBAL\Connection;
 use Fd\PrismPayment\Core\Port\CredentialStore;
 use Fd\PrismPayment\Core\Settlement\PrismSettlementRecord;
+use Fd\PrismPayment\Core\Settlement\SettleClaim;
 use Fd\PrismPayment\Core\Settlement\SettlementStatus;
 
 /**
@@ -27,6 +28,8 @@ use Fd\PrismPayment\Core\Settlement\SettlementStatus;
  */
 final class DbalCredentialStore implements CredentialStore
 {
+    private const SETTLE_WINDOW_SECONDS = 90;
+
     public function __construct(
         private readonly Connection $connection,
     ) {
@@ -132,9 +135,9 @@ final class DbalCredentialStore implements CredentialStore
         );
     }
 
-    public function claim(string $sessionId): bool
+    public function claim(string $sessionId): SettleClaim
     {
-        $affected = $this->connection->executeStatement(
+        $fresh = $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
              SET status = :settling, updated_at = :now
              WHERE checkout_session_id = :id AND status = :pending',
@@ -146,7 +149,24 @@ final class DbalCredentialStore implements CredentialStore
             ],
         );
 
-        return 1 === (int) $affected;
+        if (1 === (int) $fresh) {
+            return SettleClaim::Fresh;
+        }
+
+        $resumed = $this->connection->executeStatement(
+            'UPDATE fd_prism_payment_settlement
+             SET updated_at = :now
+             WHERE checkout_session_id = :id
+               AND status = :settling AND COALESCE(updated_at, created_at) < :stale',
+            [
+                'id' => $sessionId,
+                'settling' => SettlementStatus::SETTLING,
+                'now' => $this->now(),
+                'stale' => $this->now(-self::SETTLE_WINDOW_SECONDS),
+            ],
+        );
+
+        return 1 === (int) $resumed ? SettleClaim::Resumed : SettleClaim::None;
     }
 
     public function load(string $sessionId): ?PrismSettlementRecord
@@ -186,14 +206,14 @@ final class DbalCredentialStore implements CredentialStore
         );
     }
 
-    public function markSettled(string $sessionId, string $transactionHash, string $network): void
+    public function markSettled(string $sessionId, string $transactionHash, string $network, ?array $credential): void
     {
         // Runs only after a won claim() (status = settling), completing settling -> settled. The
         // `status = :settling` guard makes that explicit in SQL: the row can only reach `settled`
         // from `settling`, so nothing can be forced terminal out of another state.
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
-             SET status = :status, transaction_hash = :tx, network = :net, updated_at = :now
+             SET status = :status, transaction_hash = :tx, network = :net, credential = :cred, updated_at = :now
              WHERE checkout_session_id = :id AND status = :settling',
             [
                 'id' => $sessionId,
@@ -201,6 +221,7 @@ final class DbalCredentialStore implements CredentialStore
                 'settling' => SettlementStatus::SETTLING,
                 'tx' => $transactionHash,
                 'net' => $network,
+                'cred' => null !== $credential ? $this->encode($credential) : null,
                 'now' => $this->now(),
             ],
         );
@@ -213,7 +234,7 @@ final class DbalCredentialStore implements CredentialStore
         // so a settled row cannot be reverted by a caller that forgot to check first (F0).
         $this->connection->executeStatement(
             'UPDATE fd_prism_payment_settlement
-             SET status = :status, updated_at = :now
+             SET status = :status, credential = NULL, updated_at = :now
              WHERE checkout_session_id = :id AND status IN (:pending, :settling)',
             [
                 'id' => $sessionId,
@@ -255,8 +276,8 @@ final class DbalCredentialStore implements CredentialStore
         return $value;
     }
 
-    private function now(): string
+    private function now(int $offsetSeconds = 0): string
     {
-        return (new \DateTimeImmutable())->format('Y-m-d H:i:s.v');
+        return (new \DateTimeImmutable())->modify(sprintf('%+d seconds', $offsetSeconds))->format('Y-m-d H:i:s.v');
     }
 }
